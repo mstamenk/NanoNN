@@ -14,6 +14,7 @@ from PhysicsTools.NanoNN.helpers.jetmetCorrector import JetMETCorrector, rndSeed
 from PhysicsTools.NanoNN.helpers.triggerHelper import passTrigger
 from PhysicsTools.NanoNN.helpers.utils import closest, sumP4, polarP4, configLogger, get_subjets, deltaPhi, deltaR
 from PhysicsTools.NanoNN.helpers.nnHelper import convert_prob, ensemble
+from PhysicsTools.NanoNN.helpers.massFitter import fitMass
 
 import logging
 logger = logging.getLogger('nano')
@@ -482,16 +483,58 @@ class hhh6bProducer(Module):
         self.out.branch("h1_eta", "F")
         self.out.branch("h1_phi", "F")
         self.out.branch("h1_mass", "F")
+        self.out.branch("h1_match", "O")
 
         self.out.branch("h2_pt", "F")
         self.out.branch("h2_eta", "F")
         self.out.branch("h2_phi", "F")
         self.out.branch("h2_mass", "F")
+        self.out.branch("h2_match", "O")
 
         self.out.branch("h3_pt", "F")
         self.out.branch("h3_eta", "F")
         self.out.branch("h3_phi", "F")
         self.out.branch("h3_mass", "F")
+        self.out.branch("h3_match", "O")
+
+        self.out.branch("h1_t2_pt", "F")
+        self.out.branch("h1_t2_eta", "F")
+        self.out.branch("h1_t2_phi", "F")
+        self.out.branch("h1_t2_mass", "F")
+        self.out.branch("h1_t2_match", "O")
+        self.out.branch("h1_t2_dRjets", "F")
+
+        self.out.branch("h2_t2_pt", "F")
+        self.out.branch("h2_t2_eta", "F")
+        self.out.branch("h2_t2_phi", "F")
+        self.out.branch("h2_t2_mass", "F")
+        self.out.branch("h2_t2_match", "O")
+        self.out.branch("h2_t2_dRjets", "F")
+
+        self.out.branch("h3_t2_pt", "F")
+        self.out.branch("h3_t2_eta", "F")
+        self.out.branch("h3_t2_phi", "F")
+        self.out.branch("h3_t2_mass", "F")
+        self.out.branch("h3_t2_match", "O")
+        self.out.branch("h3_t2_dRjets", "F")
+
+        self.out.branch("h1_t3_pt", "F")
+        self.out.branch("h1_t3_eta", "F")
+        self.out.branch("h1_t3_phi", "F")
+        self.out.branch("h1_t3_mass", "F")
+
+        self.out.branch("h2_t3_pt", "F")
+        self.out.branch("h2_t3_eta", "F")
+        self.out.branch("h2_t3_phi", "F")
+        self.out.branch("h2_t3_mass", "F")
+
+        self.out.branch("h3_t3_pt", "F")
+        self.out.branch("h3_t3_eta", "F")
+        self.out.branch("h3_t3_phi", "F")
+        self.out.branch("h3_t3_mass", "F")
+
+        self.out.branch("h_fit_mass", "F")
+
 
         self.out.branch("hhh_resolved_mass", "F")
         self.out.branch("hhh_resolved_pt", "F")
@@ -553,13 +596,29 @@ class hhh6bProducer(Module):
         # more small jets
         self.out.branch("nsmalljets", "I")
         self.out.branch("nbtags", "I")
-        for idx in ([1, 2, 3, 4, 5, 6, 7, 8]):
+        for idx in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]):
             prefix = 'jet%i'%idx
             self.out.branch(prefix + "Pt", "F")
             self.out.branch(prefix + "Eta", "F")
             self.out.branch(prefix + "Phi", "F")
+            self.out.branch(prefix + "DeepFlavB", "F")
             if self.isMC:
                 self.out.branch(prefix + "JetId", "F")
+                self.out.branch(prefix + "HadronFlavour", "F")
+                self.out.branch(prefix + "HiggsMatched", "O")
+                self.out.branch(prefix + "FatJetMatched", "O")
+
+        for idx in ([1, 2, 3, 4, 5, 6]):
+            prefix = 'bcand%i'%idx
+            self.out.branch(prefix + "Pt", "F")
+            self.out.branch(prefix + "Eta", "F")
+            self.out.branch(prefix + "Phi", "F")
+            self.out.branch(prefix + "DeepFlavB", "F")
+            if self.isMC:
+                self.out.branch(prefix + "JetId", "F")
+                self.out.branch(prefix + "HadronFlavour", "F")
+                self.out.branch(prefix + "HiggsMatched", "O")
+
 
 
         # leptons
@@ -799,7 +858,10 @@ class hhh6bProducer(Module):
             fj.idx = idx
             fj.is_qualified = True
             fj.subjets = get_subjets(fj, event.subjets, ('subJetIdx1', 'subJetIdx2'))
-            fj.Xbb = (fj.particleNetMD_Xbb/(1. - fj.particleNetMD_Xcc - fj.particleNetMD_Xqq))
+            if (1. - fj.particleNetMD_Xcc - fj.particleNetMD_Xqq) > 0:
+                fj.Xbb = (fj.particleNetMD_Xbb/(1. - fj.particleNetMD_Xcc - fj.particleNetMD_Xqq))
+            else: 
+                fj.Xbb = -1
             #den = fj.particleNetMD_Xbb + fj.particleNetMD_Xcc + fj.particleNetMD_Xqq + fj.particleNetMD_QCDb + fj.particleNetMD_QCDbb + fj.particleNetMD_QCDc + fj.particleNetMD_QCDcc + fj.particleNetMD_QCDothers
             den = fj.particleNetMD_Xbb + fj.particleNetMD_Xcc + fj.particleNetMD_Xqq + fj.particleNetMD_QCD
             num = fj.particleNetMD_Xbb + fj.particleNetMD_Xcc + fj.particleNetMD_Xqq
@@ -853,7 +915,15 @@ class hhh6bProducer(Module):
         event.bmjets = []
         event.btjets = []
         event.bmjetsCSV = []
+        event.alljets = []
         for j in event._allJets:
+            #overlap = False
+            #for fj in event.fatjets:
+            #    if deltaR(fj,j) < 0.8: overlap = True # calculate overlap between small r jets and fatjets
+            #if overlap: continue
+            
+
+            event.alljets.append(j)
             if j.btagDeepFlavB > self.DeepFlavB_WP_L:
                 event.bljets.append(j)
             if j.btagDeepFlavB > self.DeepFlavB_WP_M:
@@ -863,14 +933,17 @@ class hhh6bProducer(Module):
             if j.btagDeepB > self.DeepCSV_WP_M:
                 event.bmjetsCSV.append(j)
 
-        jpt_thr = 40; jeta_thr = 2.5;
+        jpt_thr = 20; jeta_thr = 2.5;
         if self.year == 2016:
             jpt_thr = 30; jeta_thr = 2.4;
         event.bmjets = [j for j in event.bmjets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
         event.bljets = [j for j in event.bljets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
+        event.alljets = [j for j in event.alljets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
 
         event.bmjets.sort(key=lambda x : x.pt, reverse = True)
         event.bljets.sort(key=lambda x : x.pt, reverse = True)
+        #event.alljets.sort(key=lambda x : x.pt, reverse = True)
+        event.alljets.sort(key=lambda x : x.btagDeepFlavB, reverse = True)
 
         #self.nBTaggedJets = int(len(event.bmjets))
         self.nBTaggedJets = int(len(event.bljets))
@@ -1442,117 +1515,448 @@ class hhh6bProducer(Module):
         self.out.fillBranch("nbtags", self.nBTaggedJets)
         self.out.fillBranch("nsmalljets",self.nSmallJets)
         self.out.fillBranch("nfatjets", self.nFatJets)
-        for idx in ([1, 2, 3, 4, 5, 6, 7, 8]):
+        for idx in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]):
             j = jets[idx-1] if len(jets)>idx-1 else _NullObject()
             prefix = 'jet%i'%(idx)
             fillBranch = self._get_filler(j)
             fillBranch(prefix + "Pt", j.pt)
             fillBranch(prefix + "Eta", j.eta)
             fillBranch(prefix + "Phi", j.phi)
+            fillBranch(prefix + "DeepFlavB", j.btagDeepFlavB)
             if self.isMC:
                 fillBranch(prefix + "JetId", j.jetId)
+                fillBranch(prefix + "HadronFlavour", j.hadronFlavour)
+                fillBranch(prefix + "HiggsMatched", j.HiggsMatch)
+                fillBranch(prefix + "FatJetMatched", j.FatJetMatch)
 
         jets_4vec = [polarP4(j) for j in jets]
-        if self.nFatJets == 0:
-            if len(jets_4vec) == 6:
-                permutations = list(itertools.permutations(jets_4vec))
+        hadGenH_4vec = [polarP4(h) for h in self.hadGenHs]
+        genHdaughter_4vec = [polarP4(d) for d in self.genHdaughter]
+        if len(jets_4vec) > 5:
+            jets_4vec = jets_4vec[:6]
+            #if self.nFatJets == 0:
+            #    if len(jets_4vec) == 6:
 
-                min_chi2 = 1000000000000000
-                for permutation in permutations:
-                    h1_tmp = permutation[0] + permutation[1]
-                    h2_tmp = permutation[2] + permutation[3]
-                    h3_tmp = permutation[4] + permutation[5]
+            # Technique 1: simple chi2
+            permutations = list(itertools.permutations(jets_4vec))
+            permutations = [el[:6] for el in permutations]
+            permutations = list(set(permutations))
 
-                    chi2 = 0
-                    for h in [h1_tmp, h2_tmp, h3_tmp]:
-                        chi2 += (h.M()**2 - 125.0**2)**2
+            min_chi2 = 1000000000000000
+            for permutation in permutations:
+                h1_tmp = permutation[0] + permutation[1]
+                h2_tmp = permutation[2] + permutation[3]
+                h3_tmp = permutation[4] + permutation[5]
 
-                    if chi2 < min_chi2:
-                        min_chi2 = chi2
-                        if h1_tmp.Pt() > h2_tmp.Pt():
-                            if h1_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h1_tmp
-                                if h2_tmp.Pt() > h3_tmp.Pt():
-                                    h2 = h2_tmp
-                                    h3 = h3_tmp
-                                else:
-                                    h2 = h3_tmp
-                                    h3 = h2_tmp
-                            else:
-                                h1 = h3_tmp
-                                h2 = h1_tmp
-                                h3 = h2_tmp
-                        else:
-                            if h1_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h2_tmp
-                                h2 = h1_tmp
+                chi2 = 0
+                for h in [h1_tmp, h2_tmp, h3_tmp]:
+                    chi2 += (h.M() - 125.0)**2
+
+                if chi2 < min_chi2:
+                    min_chi2 = chi2
+                    if h1_tmp.Pt() > h2_tmp.Pt():
+                        if h1_tmp.Pt() > h3_tmp.Pt():
+                            h1 = h1_tmp
+                            if h2_tmp.Pt() > h3_tmp.Pt():
+                                h2 = h2_tmp
                                 h3 = h3_tmp
                             else:
-                                h3 = h1_tmp
-                                if h2_tmp.Pt() > h3_tmp.Pt():
-                                    h1 = h2_tmp
-                                    h2 = h3_tmp
+                                h2 = h3_tmp
+                                h3 = h2_tmp
+                        else:
+                            h1 = h3_tmp
+                            h2 = h1_tmp
+                            h3 = h2_tmp
+                    else:
+                        if h1_tmp.Pt() > h3_tmp.Pt():
+                            h1 = h2_tmp
+                            h2 = h1_tmp
+                            h3 = h3_tmp
+                        else:
+                            h3 = h1_tmp
+                            if h2_tmp.Pt() > h3_tmp.Pt():
+                                h1 = h2_tmp
+                                h2 = h3_tmp
+                            else:
+                                h1 = h3_tmp
+                                h2 = h2_tmp
+
+            # truth matching 
+            matchH1 = False
+            matchH2 = False
+            matchH3 = False
+
+            for h in hadGenH_4vec:
+                if deltaR(h.eta(),h.phi(),h1.eta(),h1.phi()) < 0.4:
+                    matchH1 = True
+                    continue
+                if deltaR(h.eta(),h.phi(),h2.eta(),h2.phi()) < 0.4:
+                    matchH2 = True
+                    continue
+                if deltaR(h.eta(),h.phi(),h3.eta(),h3.phi()) < 0.4:
+                    matchH3 = True
+                        
+            self.out.fillBranch("h1_mass", h1.M())
+            self.out.fillBranch("h1_pt", h1.Pt())
+            self.out.fillBranch("h1_eta", h1.Eta())
+            self.out.fillBranch("h1_phi", h1.Phi())
+            self.out.fillBranch("h1_match", matchH1)
+
+            self.out.fillBranch("h2_mass", h2.M())
+            self.out.fillBranch("h2_pt", h2.Pt())
+            self.out.fillBranch("h2_eta", h2.Eta())
+            self.out.fillBranch("h2_phi", h2.Phi())
+            self.out.fillBranch("h2_match", matchH2)
+
+            self.out.fillBranch("h3_mass", h3.M())
+            self.out.fillBranch("h3_pt", h3.Pt())
+            self.out.fillBranch("h3_eta", h3.Eta())
+            self.out.fillBranch("h3_phi", h3.Phi())
+            self.out.fillBranch("h3_match", matchH3)
+
+            self.out.fillBranch("hhh_resolved_mass", (h1+h2+h3).M())
+            self.out.fillBranch("hhh_resolved_pt", (h1+h2+h3).Pt())
+
+            self.out.fillBranch("h1h2_mass_squared", (h1+h2).M() * (h1+h2).M())
+            self.out.fillBranch("h2h3_mass_squared", (h2+h3).M() * (h2+h3).M())
+
+            # Technique 2: mass mH1 as reference
+
+            permutations = list(itertools.permutations(jets_4vec))
+            permutations = [el[:6] for el in permutations]
+            permutations = list(set(permutations))
+
+            min_chi2 = 1000000000000000
+            for permutation in permutations:
+                j0_tmp = permutation[0]
+                j1_tmp = permutation[1]
+
+                j2_tmp = permutation[2]
+                j3_tmp = permutation[3]
+
+                j4_tmp = permutation[4]
+                j5_tmp = permutation[5]
+
+                h1_tmp = j0_tmp + j1_tmp
+                h2_tmp = j2_tmp + j3_tmp
+                h3_tmp = j4_tmp + j5_tmp
+
+                chi2 = 0
+                #for h in [h1_tmp, h2_tmp, h3_tmp]:
+                #    chi2 += (h.M() - 125.0)**2
+                chi2 = (h1_tmp.M() - h2_tmp.M())**2 + (h1_tmp.M() - h3_tmp.M())**2 + (h2_tmp.M() - h3_tmp.M())**2
+
+                if chi2 < min_chi2:
+                    min_chi2 = chi2
+                    if h1_tmp.Pt() > h2_tmp.Pt():
+                        if h1_tmp.Pt() > h3_tmp.Pt():
+                            h1 = h1_tmp
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j0 = j0_tmp
+                                j1 = j1_tmp
+                            else:
+                                j0 = j1_tmp
+                                j1 = j0_tmp
+
+                            if h2_tmp.Pt() > h3_tmp.Pt():
+                                h2 = h2_tmp
+                                if j2_tmp.Pt() > j3_tmp.Pt():
+                                    j2 = j2_tmp 
+                                    j3 = j3_tmp
                                 else:
-                                    h1 = h3_tmp
-                                    h2 = h2_tmp
-                    
-                self.out.fillBranch("h1_mass", h1.M())
-                self.out.fillBranch("h1_pt", h1.Pt())
-                self.out.fillBranch("h1_eta", h1.Eta())
-                self.out.fillBranch("h1_phi", h1.Phi())
+                                    j2 = j3_tmp
+                                    j3 = j2_tmp
 
-                self.out.fillBranch("h2_mass", h2.M())
-                self.out.fillBranch("h2_pt", h2.Pt())
-                self.out.fillBranch("h2_eta", h2.Eta())
-                self.out.fillBranch("h2_phi", h2.Phi())
+                                h3 = h3_tmp
+                                if j4_tmp.Pt() > j5_tmp.Pt():
+                                    j4 = j4_tmp
+                                    j5 = j5_tmp
+                                else:
+                                    j4 = j5_tmp
+                                    j5 = j4_tmp
+                            else:
+                                h2 = h3_tmp
+                                if j4_tmp.Pt() > j5_tmp.Pt():
+                                    j2 = j4_tmp
+                                    j3 = j5_tmp
+                                else:
+                                    j2 = j5_tmp
+                                    j3 = j4_tmp
 
-                self.out.fillBranch("h3_mass", h3.M())
-                self.out.fillBranch("h3_pt", h3.Pt())
-                self.out.fillBranch("h3_eta", h3.Eta())
-                self.out.fillBranch("h3_phi", h3.Phi())
+                                h3 = h2_tmp
+                                if j2_tmp.Pt() > j3_tmp.Pt():
+                                    j4 = j2_tmp
+                                    j5 = j3_tmp
+                                else:
+                                    j4 = j3_tmp
+                                    j5 = j2_tmp
+                        else:
+                            h1 = h3_tmp
+                            if j4_tmp.Pt() > j5_tmp.Pt():
+                                j0 = j4_tmp
+                                j1 = j5_tmp
+                            else:
+                                j0 = j5_tmp
+                                j1 = j4_tmp
 
-                self.out.fillBranch("hhh_resolved_mass", (h1+h2+h3).M())
-                self.out.fillBranch("hhh_resolved_pt", (h1+h2+h3).Pt())
+                            h2 = h1_tmp
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j2 = j0_tmp
+                                j3 = j1_tmp
+                            else:
+                                j2 = j1_tmp
+                                j3 = j0_tmp
+                            h3 = h2_tmp
+                            if j2_tmp.Pt() > j3_tmp.Pt():
+                                j4 = j2_tmp
+                                j5 = j3_tmp
+                            else:
+                                j4 = j3_tmp
+                                j5 = j2_tmp
+                    else:
+                        if h1_tmp.Pt() > h3_tmp.Pt():
+                            h1 = h2_tmp
+                            if j2_tmp.Pt() > j3_tmp.Pt():
+                                j0 = j2_tmp
+                                j1 = j3_tmp
+                            else:
+                                j0 = j3_tmp
+                                j1 = j2_tmp
 
-                self.out.fillBranch("h1h2_mass_squared", (h1+h2).M() * (h1+h2).M())
-                self.out.fillBranch("h2h3_mass_squared", (h2+h3).M() * (h2+h3).M())
+                            h2 = h1_tmp
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j2 = j0_tmp
+                                j3 = j1_tmp
+                            else:
+                                j2 = j1_tmp
+                                j3 = j0_tmp
 
-            else:
-                self.out.fillBranch("h1_mass", 0)
-                self.out.fillBranch("h1_pt", 0)
-                self.out.fillBranch("h1_eta", 0)
-                self.out.fillBranch("h1_phi", 0)
+                            h3 = h3_tmp
+                            if j4_tmp.Pt() > j5_tmp.Pt():
+                                j4 = j4_tmp
+                                j5 = j5_tmp
+                            else:
+                                j4 = j5_tmp
+                                j5 = j4_tmp
+                        else:
+                            h3 = h1_tmp
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j4 = j0_tmp
+                                j5 = j1_tmp
+                            else:
+                                j4 = j1_tmp
+                                j5 = j0_tmp
 
-                self.out.fillBranch("h2_mass", 0)
-                self.out.fillBranch("h2_pt", 0)
-                self.out.fillBranch("h2_eta", 0)
-                self.out.fillBranch("h2_phi", 0)
+                            if h2_tmp.Pt() > h3_tmp.Pt():
+                                h1 = h2_tmp
+                                if j2_tmp.Pt() > j3_tmp.Pt():
+                                    j0 = j2_tmp
+                                    j1 = j3_tmp
+                                else:
+                                    j0 = j3_tmp
+                                    j1 = j2_tmp
+                                h2 = h3_tmp
+                                if j4_tmp.Pt() > j5_tmp.Pt():
+                                    j2 = j4_tmp
+                                    j3 = j5_tmp
+                                else:
+                                    j2 = j5_tmp
+                                    j3 = j4_tmp
+                            else:
+                                h1 = h3_tmp
+                                if j4_tmp.Pt() > j5_tmp.Pt():
+                                    j0 = j4_tmp
+                                    j1 = j5_tmp
+                                else:
+                                    j0 = j5_tmp
+                                    j1 = j4_tmp
 
-                self.out.fillBranch("h3_mass", 0)
-                self.out.fillBranch("h3_pt", 0)
-                self.out.fillBranch("h3_eta", 0)
-                self.out.fillBranch("h3_phi", 0)
+                                h2 = h2_tmp
+                                if j2_tmp.Pt() > j3_tmp.Pt():
+                                    j2 = j2_tmp
+                                    j3 = j3_tmp
+                                else:
+                                    j2 = j3_tmp
+                                    j3 = j2_tmp
+            # kin fit
+            fitted_nll, fitted_mass = fitMass(h1.M(),15., h2.M(), 15., h3.M(), 15.)
 
-                self.out.fillBranch("h1h2_mass_squared", 0)
-                self.out.fillBranch("h2h3_mass_squared", 0)
+            # truth matching 
+            matchH1 = False
+            matchH2 = False
+            matchH3 = False
+            for dau in genHdaughter_4vec:
+                for j in [j0,j1,j2,j3,j4,j5]:
+                    j.matchH = False
+                    if deltaR(dau.eta(),dau.phi(),j.eta(),j.phi()) < 0.4:
+                        j.matchH = True
+
+            if j0.matchH and j1.matchH:
+                matchH1 = True
+
+            if j2.matchH and j3.matchH:
+                matchH2 = True
+
+            if j4.matchH and j5.matchH:
+                matchH3 = True
+
+            # fill variables
+            self.out.fillBranch("h_fit_mass", fitted_mass)
+                        
+            self.out.fillBranch("h1_t2_mass", h1.M())
+            self.out.fillBranch("h1_t2_pt", h1.Pt())
+            self.out.fillBranch("h1_t2_eta", h1.Eta())
+            self.out.fillBranch("h1_t2_phi", h1.Phi())
+            self.out.fillBranch("h1_t2_match", matchH1)
+            self.out.fillBranch("h1_t2_dRjets", deltaR(j0.eta(),j0.phi(),j1.eta(),j1.phi()))
+
+            self.out.fillBranch("h2_t2_mass", h2.M())
+            self.out.fillBranch("h2_t2_pt", h2.Pt())
+            self.out.fillBranch("h2_t2_eta", h2.Eta())
+            self.out.fillBranch("h2_t2_phi", h2.Phi())
+            self.out.fillBranch("h2_t2_match", matchH2)
+            self.out.fillBranch("h2_t2_dRjets", deltaR(j2.eta(),j2.phi(),j3.eta(),j3.phi()))
+
+            self.out.fillBranch("h3_t2_mass", h3.M())
+            self.out.fillBranch("h3_t2_pt", h3.Pt())
+            self.out.fillBranch("h3_t2_eta", h3.Eta())
+            self.out.fillBranch("h3_t2_phi", h3.Phi())
+            self.out.fillBranch("h3_t2_match", matchH3)
+            self.out.fillBranch("h3_t2_dRjets", deltaR(j4.eta(),j4.phi(),j5.eta(),j5.phi()))
+
+            dic_bcands = {1: j0, 
+                          2: j1,
+                          3: j2,
+                          4: j3,
+                          5: j4,
+                          6: j5,
+                    }
+
+            for idx in ([1, 2, 3, 4, 5, 6]):
+                prefix = 'bcand%i'%idx
+                self.out.fillBranch(prefix + "Pt", dic_bcands[idx].Pt())
+                self.out.fillBranch(prefix + "Eta", dic_bcands[idx].Eta())
+                self.out.fillBranch(prefix + "Phi", dic_bcands[idx].Phi())
+                if self.isMC:
+                    self.out.fillBranch(prefix + "HiggsMatched", dic_bcands[idx].matchH)
+
+
+
+            # Technique 3: mass fitter
+
+            #permutations = list(itertools.permutations(jets_4vec))
+            #min_chi2 = 1000000000000000
+            #m_fit = -1
+            #for permutation in permutations:
+            #    h1_tmp = permutation[0] + permutation[1]
+            #    h2_tmp = permutation[2] + permutation[3]
+            #    h3_tmp = permutation[4] + permutation[5]
+
+            #    chi2 = 0
+            #    chi2, fitted_mass = fitMass(h1_tmp.M(),15., h2_tmp.M(), 15., h3_tmp.M(), 15.)
+                
+            #    if chi2 < min_chi2:
+            #        m_fit = fitted_mass
+            #        min_chi2 = chi2
+            #        if h1_tmp.Pt() > h2_tmp.Pt():
+            #            if h1_tmp.Pt() > h3_tmp.Pt():
+            #                h1 = h1_tmp
+            #                if h2_tmp.Pt() > h3_tmp.Pt():
+            #                    h2 = h2_tmp
+            #                    h3 = h3_tmp
+            #                else:
+            #                    h2 = h3_tmp
+            #                    h3 = h2_tmp
+            #            else:
+            #                h1 = h3_tmp
+            #                h2 = h1_tmp
+            #                h3 = h2_tmp
+            #        else:
+            #            if h1_tmp.Pt() > h3_tmp.Pt():
+            #                h1 = h2_tmp
+            #                h2 = h1_tmp
+            #                h3 = h3_tmp
+            #            else:
+            #                h3 = h1_tmp
+            #                if h2_tmp.Pt() > h3_tmp.Pt():
+            #                    h1 = h2_tmp
+            #                    h2 = h3_tmp
+            #                else:
+            #                    h1 = h3_tmp
+            #                    h2 = h2_tmp
+            #            
+            #self.out.fillBranch("h1_t3_mass", h1.M())
+            #self.out.fillBranch("h1_t3_pt", h1.Pt())
+            #self.out.fillBranch("h1_t3_eta", h1.Eta())
+            #self.out.fillBranch("h1_t3_phi", h1.Phi())
+
+            #self.out.fillBranch("h2_t3_mass", h2.M())
+            #self.out.fillBranch("h2_t3_pt", h2.Pt())
+            #self.out.fillBranch("h2_t3_eta", h2.Eta())
+            #self.out.fillBranch("h2_t3_phi", h2.Phi())
+
+            #self.out.fillBranch("h3_t3_mass", h3.M())
+            #self.out.fillBranch("h3_t3_pt", h3.Pt())
+            #self.out.fillBranch("h3_t3_eta", h3.Eta())
+            #self.out.fillBranch("h3_t3_phi", h3.Phi())
+
+
+            #self.out.fillBranch("h_fit_mass", m_fit)
+
         else:
-            self.out.fillBranch("h1_mass", 0)
-            self.out.fillBranch("h1_pt", 0)
-            self.out.fillBranch("h1_eta", 0)
-            self.out.fillBranch("h1_phi", 0)
+            self.out.fillBranch("h1_mass", -1)
+            self.out.fillBranch("h1_pt", -1)
+            self.out.fillBranch("h1_eta", -1)
+            self.out.fillBranch("h1_phi", -1)
 
-            self.out.fillBranch("h2_mass", 0)
-            self.out.fillBranch("h2_pt", 0)
-            self.out.fillBranch("h2_eta", 0)
-            self.out.fillBranch("h2_phi", 0)
+            self.out.fillBranch("h2_mass", -1)
+            self.out.fillBranch("h2_pt", -1)
+            self.out.fillBranch("h2_eta", -1)
+            self.out.fillBranch("h2_phi", -1)
 
-            self.out.fillBranch("h3_mass", 0)
-            self.out.fillBranch("h3_pt", 0)
-            self.out.fillBranch("h3_eta", 0)
-            self.out.fillBranch("h3_phi", 0)
+            self.out.fillBranch("h3_mass", -1)
+            self.out.fillBranch("h3_pt", -1)
+            self.out.fillBranch("h3_eta", -1)
+            self.out.fillBranch("h3_phi", -1)
 
-            self.out.fillBranch("h1h2_mass_squared", 0)
-            self.out.fillBranch("h2h3_mass_squared", 0)
+            self.out.fillBranch("h1_t2_mass", -1)
+            self.out.fillBranch("h1_t2_pt", -1)
+            self.out.fillBranch("h1_t2_eta", -1)
+            self.out.fillBranch("h1_t2_phi", -1)
+
+            self.out.fillBranch("h2_t2_mass", -1)
+            self.out.fillBranch("h2_t2_pt", -1)
+            self.out.fillBranch("h2_t2_eta", -1)
+            self.out.fillBranch("h2_t2_phi", -1)
+
+            self.out.fillBranch("h3_t2_mass", -1)
+            self.out.fillBranch("h3_t2_pt", -1)
+            self.out.fillBranch("h3_t2_eta", -1)
+            self.out.fillBranch("h3_t2_phi", -1)
+
+            self.out.fillBranch("h1_t3_mass", -1)
+            self.out.fillBranch("h1_t3_pt", -1)
+            self.out.fillBranch("h1_t3_eta", -1)
+            self.out.fillBranch("h1_t3_phi", -1)
+
+            self.out.fillBranch("h2_t3_mass", -1)
+            self.out.fillBranch("h2_t3_pt", -1)
+            self.out.fillBranch("h2_t3_eta", -1)
+            self.out.fillBranch("h2_t3_phi", -1)
+
+            self.out.fillBranch("h3_t3_mass", -1)
+            self.out.fillBranch("h3_t3_pt", -1)
+            self.out.fillBranch("h3_t3_eta", -1)
+            self.out.fillBranch("h3_t3_phi", -1)
+
+            self.out.fillBranch("h_fit_mass", -1)
+
+            self.out.fillBranch("hhh_resolved_mass",-1)
+            self.out.fillBranch("hhh_resolved_pt", -1)
+
+            self.out.fillBranch("h1h2_mass_squared", -1)
+            self.out.fillBranch("h2h3_mass_squared", -1)
+
 
 
     def fillVBFFatJetInfo(self, event, fatjets):
@@ -1651,13 +2055,39 @@ class hhh6bProducer(Module):
             if(probe_jets[0].pt > 300 and abs(probe_jets[0].eta)<2.5 and probe_jets[1].pt > 300 and abs(probe_jets[1].eta)<2.5):
                 if ((probe_jets[0].msoftdropJMS>30 and probe_jets[1].msoftdropJMS>30) or (probe_jets[0].regressed_massJMS>30 and probe_jets[1].regressed_massJMS>30) or (probe_jets[0].msoftdrop>30 and probe_jets[1].msoftdrop>30)):
                     passSel=True
+        elif self._opts['option'] == "0":
+            if (self.nFatJets == 0 and self.nSmallJets > 5 ): passSel = True
         elif self._opts['option'] == "1":
-            passSel = True
+            if (self.nFatJets == 1 and self.nSmallJets > 5 ): passSel = True
+        elif self._opts['option'] == "2":
+            if (self.nFatJets == 2 and self.nSmallJets > 5 ): passSel = True
+        elif self._opts['option'] == "3":
+            if (self.nFatJets == 3 and self.nSmallJets > 5 ): passSel = True
+
         if not passSel: return False
 
         # load gen history
         hadGenHs = self.loadGenHistory(event, probe_jets)
+        self.hadGenHs = hadGenHs
 
+        for j in event.alljets:
+            j.HiggsMatch = False
+            j.FatJetMatch = False
+
+        if self.isMC:
+            daughters = []
+            for higgs_gen in hadGenHs:
+                for idx in higgs_gen.dauIdx:
+                    dau = event.genparts[idx]
+                    daughters.append(dau)
+                    for j in event.alljets:
+                        if deltaR(j,dau) < 0.4:
+                            j.HiggsMatch = True
+        self.genHdaughter = daughters
+        for fj in probe_jets:
+            for j in event.alljets:
+                if deltaR(fj,j) < 0.8:
+                    j.FatJetMatch = True
         # fill output branches
         self.fillBaseEventInfo(event, probe_jets, hadGenHs)
         if len(probe_jets) > 1:
@@ -1665,7 +2095,8 @@ class hhh6bProducer(Module):
           
         # for ak4 jets we only fill the b-tagged medium jets
         #self.fillJetInfo(event, event.bmjets)
-        self.fillJetInfo(event, event.bljets)
+        #self.fillJetInfo(event, event.bljets)
+        self.fillJetInfo(event, event.alljets)
 
         self.fillVBFFatJetInfo(event, event.vbffatjets)
         self.fillVBFJetInfo(event, event.vbfak4jets)
@@ -1681,7 +2112,7 @@ class hhh6bProducer(Module):
 # define modules using the syntax 'name = lambda : constructor' to avoid having them loaded when not needed
 def hhh6bProducerFromConfig():
     import sys
-    sys.path.remove('/usr/lib64/python2.7/site-packages')
+    #sys.path.remove('/usr/lib64/python2.7/site-packages')
     import yaml
     with open('hhh6b_cfg.json') as f:
         cfg = yaml.safe_load(f)

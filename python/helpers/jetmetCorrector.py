@@ -186,6 +186,7 @@ class JetMETCorrector(object):
             else:
                 # unc. by source
                 self.jesUncertaintyInputFileName = self.jes_uncertainty_file_prefix + self.globalTag + "_UncertaintySources_" + self.jetType + ".txt"
+            #print(self.jesInputFilePath, self.jesUncertaintyInputFileName)
             pars = ROOT.JetCorrectorParameters(
                 os.path.join(self.jesInputFilePath, self.jesUncertaintyInputFileName),
                 self.jes_source)
