@@ -92,7 +92,7 @@ class triggerEfficiency():
                                       thist.GetYaxis().FindFixBin(tpt))
         return trigEff
         
-class hhh6bProducer(Module):
+class hhh4b2tauProducer(Module):
     
     def __init__(self, year, **kwargs):
         print(year)
@@ -283,8 +283,7 @@ class hhh6bProducer(Module):
 
     def beginFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         self.isMC = bool(inputTree.GetBranch('genWeight'))
-
-       
+        
         # remove all possible h5 cache files
         for f in os.listdir('.'):
             if f.endswith('.h5'):
@@ -319,7 +318,6 @@ class hhh6bProducer(Module):
         # fatjets
         self.out.branch("nfatjets","I")
         self.out.branch("nprobejets","I")
-        self.out.branch("nHiggsMatchedJets","I")
 
         for idx in ([1, 2, 3]):
             prefix = 'fatJet%i' % idx
@@ -341,9 +339,8 @@ class hhh6bProducer(Module):
             #self.out.branch(prefix + "PNetQCDcc", "F")
             #self.out.branch(prefix + "PNetQCDothers", "F")
             self.out.branch(prefix + "Tau3OverTau2", "F")
+            
             self.out.branch(prefix + "GenMatchIndex", "I")
-            self.out.branch(prefix + "HiggsMatchedIndex", "I")
-            self.out.branch(prefix + "HiggsMatched", "O")
             self.out.branch(prefix + "HasMuon", "O")
             self.out.branch(prefix + "HasElectron", "O")
             self.out.branch(prefix + "HasBJetCSVLoose", "O")
@@ -525,25 +522,18 @@ class hhh6bProducer(Module):
         self.out.branch("h1_t3_eta", "F")
         self.out.branch("h1_t3_phi", "F")
         self.out.branch("h1_t3_mass", "F")
-        self.out.branch("h1_t3_match", "O")
-        self.out.branch("h1_t3_dRjets", "F")
 
         self.out.branch("h2_t3_pt", "F")
         self.out.branch("h2_t3_eta", "F")
         self.out.branch("h2_t3_phi", "F")
         self.out.branch("h2_t3_mass", "F")
-        self.out.branch("h2_t3_match", "O")
-        self.out.branch("h2_t3_dRjets", "F")
 
         self.out.branch("h3_t3_pt", "F")
         self.out.branch("h3_t3_eta", "F")
         self.out.branch("h3_t3_phi", "F")
         self.out.branch("h3_t3_mass", "F")
-        self.out.branch("h3_t3_match", "O")
-        self.out.branch("h3_t3_dRjets", "F")
 
         self.out.branch("h_fit_mass", "F")
-        self.out.branch("bdt", "F")
 
 
         self.out.branch("hhh_resolved_mass", "F")
@@ -611,6 +601,7 @@ class hhh6bProducer(Module):
             self.out.branch(prefix + "Pt", "F")
             self.out.branch(prefix + "Eta", "F")
             self.out.branch(prefix + "Phi", "F")
+            self.out.branch(prefix + "M", "F")
             self.out.branch(prefix + "DeepFlavB", "F")
             if self.isMC:
                 self.out.branch(prefix + "JetId", "F")
@@ -619,6 +610,15 @@ class hhh6bProducer(Module):
                 self.out.branch(prefix + "HiggsMatchedIndex", "I")
                 self.out.branch(prefix + "FatJetMatched", "O")
                 self.out.branch(prefix + "FatJetMatchedIndex", "I")
+
+        # tau infos
+        self.out.branch("ntaus", "I")
+        for idx in ([1,2]):
+            prefix = 'tau%i'%idx
+            self.out.branch(prefix + "Pt", "F")
+            self.out.branch(prefix + "Eta", "F")
+            self.out.branch(prefix + "Phi", "F")
+            self.out.branch(prefix + "M", "F")
 
         for idx in ([1, 2, 3, 4, 5, 6]):
             prefix = 'bcand%i'%idx
@@ -630,7 +630,6 @@ class hhh6bProducer(Module):
                 self.out.branch(prefix + "JetId", "F")
                 self.out.branch(prefix + "HadronFlavour", "F")
                 self.out.branch(prefix + "HiggsMatched", "O")
-                self.out.branch(prefix + "HiggsMatchedIndex", "I")
 
 
 
@@ -648,13 +647,7 @@ class hhh6bProducer(Module):
             self.out.branch(prefix + "Pt", "F")
             self.out.branch(prefix + "Eta", "F")
             self.out.branch(prefix + "Phi", "F")
-
-        # TMVA booking
-        self.reader = ROOT.TMVA.Reader("!V:Color:Silent")
-        for var in ['h_fit_mass', 'h1_t3_mass', 'h2_t3_mass', 'h3_t3_mass', 'h1_t3_dRjets', 'h2_t3_dRjets', 'h3_t3_dRjets', 'bcand1Pt', 'bcand2Pt', 'bcand3Pt', 'bcand4Pt','bcand5Pt', 'bcand6Pt', 'bcand1Eta', 'bcand2Eta', 'bcand3Eta', 'bcand4Eta', 'bcand5Eta', 'bcand6Eta', 'bcand1Phi', 'bcand2Phi', 'bcand3Phi', 'bcand4Phi', 'bcand5Phi', 'bcand6Phi']:
-            self.reader.AddVariable(var,self.out._branches[var].buff)
-       
-        self.reader.BookMVA("bdt","/isilon/data/users/mstamenk/hhh-6b-producer/CMSSW_11_1_0_pre5_PY3/src/hhh-bdt/dataset/weights/TMVAClassification_BDT.weights.xml")
+            
     def endFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         if self._opts['run_mass_regression'] and self._opts['WRITE_CACHE_FILE']:
             for p in self.pnMassRegressions:
@@ -750,7 +743,6 @@ class hhh6bProducer(Module):
             fj.genT, fj.dr_T, fj.genTidx = closest(fj, hadGenTops)
             fj.genLepT, fj.dr_LepT, fj.genLepidx = closest(fj, lepGenTops)
 
-        hadGenHs.sort(key=lambda x: x.pt, reverse = True)
         return hadGenHs
                
     def selectLeptons(self, event):
@@ -759,6 +751,7 @@ class hhh6bProducer(Module):
         event.looseLeptons = []  # used for lepton counting
         event.cleaningElectrons = []
         event.cleaningMuons = []
+        event.allTaus = []
         
         electrons = Collection(event, "Electron")
         for el in electrons:
@@ -783,6 +776,16 @@ class hhh6bProducer(Module):
 
         event.looseLeptons.sort(key=lambda x: x.pt, reverse=True)
         event.vbfLeptons.sort(key=lambda x: x.pt, reverse=True)
+
+        # tau selection
+        taus = Collection(event,'Tau')
+        #print("Before",len(taus))
+        for tau in taus:
+            tau.Id = tau.charge * (15)
+            if tau.pt > 20 and abs(tau.eta) < 2.3 and tau.idDeepTau2017v2p1VSjet >= 8:
+                event.allTaus.append(tau)
+        #print(len(event.allTaus))
+        event.allTaus.sort(key = lambda x: x.pt, reverse=True)
 
     def correctJetsAndMET(self, event):
         # correct Jets and MET
@@ -914,7 +917,7 @@ class hhh6bProducer(Module):
         
         # select jets
         event.fatjets = [fj for fj in event._xbbFatJets if fj.pt > 200 and abs(fj.eta) < 2.4 and (fj.jetId & 2)]
-        event.ak4jets = [j for j in event._allJets if j.pt > 20 and abs(j.eta) < 2.5 and (j.jetId & 2)]
+        event.ak4jets = [j for j in event._allJets if j.pt > 25 and abs(j.eta) < 2.4 and (j.jetId & 4)]
 
         self.nFatJets = int(len(event.fatjets))
         self.nSmallJets = int(len(event.ak4jets))
@@ -935,6 +938,7 @@ class hhh6bProducer(Module):
         event.bmjets = []
         event.btjets = []
         event.bmjetsCSV = []
+        event.alljets = []
         for j in event._allJets:
             #overlap = False
             #for fj in event.fatjets:
@@ -942,6 +946,7 @@ class hhh6bProducer(Module):
             #if overlap: continue
             
 
+            event.alljets.append(j)
             if j.btagDeepFlavB > self.DeepFlavB_WP_L:
                 event.bljets.append(j)
             if j.btagDeepFlavB > self.DeepFlavB_WP_M:
@@ -956,13 +961,12 @@ class hhh6bProducer(Module):
             jpt_thr = 30; jeta_thr = 2.4;
         event.bmjets = [j for j in event.bmjets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
         event.bljets = [j for j in event.bljets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
-        #event.alljets = [j for j in event.alljets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
-        #event.alljets = [j for j in event.alljets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId == 2) and (j.puId >=2)]
+        event.alljets = [j for j in event.alljets if j.pt > jpt_thr and abs(j.eta) < jeta_thr and (j.jetId >= 4) and (j.puId >=2)]
 
         event.bmjets.sort(key=lambda x : x.pt, reverse = True)
         event.bljets.sort(key=lambda x : x.pt, reverse = True)
         #event.alljets.sort(key=lambda x : x.pt, reverse = True)
-        event.ak4jets.sort(key=lambda x : x.btagDeepFlavB, reverse = True)
+        event.alljets.sort(key=lambda x : x.btagDeepFlavB, reverse = True)
 
         #self.nBTaggedJets = int(len(event.bmjets))
         self.nBTaggedJets = int(len(event.bljets))
@@ -1387,9 +1391,6 @@ class hhh6bProducer(Module):
             fill_fj(prefix + "PNetXbb", fj.Xbb)
             fill_fj(prefix + "PNetXjj", fj.Xjj)
             fill_fj(prefix + "PNetQCD", fj.particleNetMD_QCD)
-            fill_fj(prefix + "HiggsMatched", fj.HiggsMatch)
-            fill_fj(prefix + "HiggsMatchedIndex", fj.HiggsMatchIndex)
-
             #fill_fj(prefix + "PNetQCDb", fj.particleNetMD_QCDb)
             #fill_fj(prefix + "PNetQCDbb", fj.particleNetMD_QCDbb)
             #fill_fj(prefix + "PNetQCDc", fj.particleNetMD_QCDc)
@@ -1544,6 +1545,7 @@ class hhh6bProducer(Module):
             fillBranch(prefix + "Pt", j.pt)
             fillBranch(prefix + "Eta", j.eta)
             fillBranch(prefix + "Phi", j.phi)
+            fillBranch(prefix + "M", j.mass)
             fillBranch(prefix + "DeepFlavB", j.btagDeepFlavB)
             if self.isMC:
                 fillBranch(prefix + "JetId", j.jetId)
@@ -1553,747 +1555,18 @@ class hhh6bProducer(Module):
                 fillBranch(prefix + "FatJetMatched", j.FatJetMatch)
                 fillBranch(prefix + "FatJetMatchedIndex", j.FatJetMatchIndex)
 
-        jets_4vec = [polarP4(j) for j in jets]
-        for i in range(len(jets)):
-            jets_4vec[i].HiggsMatch = jets[i].HiggsMatch
-            jets_4vec[i].HiggsMatchIndex = jets[i].HiggsMatchIndex
-        if self.isMC:
-            hadGenH_4vec = [polarP4(h) for h in self.hadGenHs]
-            genHdaughter_4vec = [polarP4(d) for d in self.genHdaughter]
-        if len(jets_4vec) > 5:
-            jets_4vec = jets_4vec[:6]
-            #if self.nFatJets == 0:
-            #    if len(jets_4vec) == 6:
-
-            # Technique 1: simple chi2
-            permutations = list(itertools.permutations(jets_4vec))
-            permutations = [el[:6] for el in permutations]
-            permutations = list(set(permutations))
-
-            min_chi2 = 1000000000000000
-            for permutation in permutations:
-                j0_tmp = permutation[0]
-                j1_tmp = permutation[1]
-
-                j2_tmp = permutation[2]
-                j3_tmp = permutation[3]
-
-                j4_tmp = permutation[4]
-                j5_tmp = permutation[5]
-
-
-                h1_tmp = j0_tmp + j1_tmp
-                h2_tmp = j2_tmp + j3_tmp
-                h3_tmp = j4_tmp + j5_tmp
-
-                chi2 = 0
-                for h in [h1_tmp, h2_tmp, h3_tmp]:
-                    chi2 += (h.M() - 125.0)**2
-
-                if chi2 < min_chi2:
-                    min_chi2 = chi2
-                    if h1_tmp.Pt() > h2_tmp.Pt():
-                        if h1_tmp.Pt() > h3_tmp.Pt():
-                            h1 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j0 = j0_tmp
-                                j1 = j1_tmp
-                            else:
-                                j0 = j1_tmp
-                                j1 = j0_tmp
-
-                            if h2_tmp.Pt() > h3_tmp.Pt():
-                                h2 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j2 = j2_tmp 
-                                    j3 = j3_tmp
-                                else:
-                                    j2 = j3_tmp
-                                    j3 = j2_tmp
-
-                                h3 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j4 = j4_tmp
-                                    j5 = j5_tmp
-                                else:
-                                    j4 = j5_tmp
-                                    j5 = j4_tmp
-                            else:
-                                h2 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j2 = j4_tmp
-                                    j3 = j5_tmp
-                                else:
-                                    j2 = j5_tmp
-                                    j3 = j4_tmp
-
-                                h3 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j4 = j2_tmp
-                                    j5 = j3_tmp
-                                else:
-                                    j4 = j3_tmp
-                                    j5 = j2_tmp
-                        else:
-                            h1 = h3_tmp
-                            if j4_tmp.Pt() > j5_tmp.Pt():
-                                j0 = j4_tmp
-                                j1 = j5_tmp
-                            else:
-                                j0 = j5_tmp
-                                j1 = j4_tmp
-
-                            h2 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-                            h3 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j4 = j2_tmp
-                                j5 = j3_tmp
-                            else:
-                                j4 = j3_tmp
-                                j5 = j2_tmp
-                    else:
-                        if h1_tmp.Pt() > h3_tmp.Pt():
-                            h1 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j0 = j2_tmp
-                                j1 = j3_tmp
-                            else:
-                                j0 = j3_tmp
-                                j1 = j2_tmp
-
-                            h2 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-
-                            h3 = h3_tmp
-                            if j4_tmp.Pt() > j5_tmp.Pt():
-                                j4 = j4_tmp
-                                j5 = j5_tmp
-                            else:
-                                j4 = j5_tmp
-                                j5 = j4_tmp
-                        else:
-                            h3 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j4 = j0_tmp
-                                j5 = j1_tmp
-                            else:
-                                j4 = j1_tmp
-                                j5 = j0_tmp
-
-                            if h2_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j0 = j2_tmp
-                                    j1 = j3_tmp
-                                else:
-                                    j0 = j3_tmp
-                                    j1 = j2_tmp
-                                h2 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j2 = j4_tmp
-                                    j3 = j5_tmp
-                                else:
-                                    j2 = j5_tmp
-                                    j3 = j4_tmp
-                            else:
-                                h1 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j0 = j4_tmp
-                                    j1 = j5_tmp
-                                else:
-                                    j0 = j5_tmp
-                                    j1 = j4_tmp
-
-                                h2 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j2 = j2_tmp
-                                    j3 = j3_tmp
-                                else:
-                                    j2 = j3_tmp
-                                    j3 = j2_tmp
-
-
-            # truth matching 
-            matchH1 = False
-            matchH2 = False
-            matchH3 = False
-            matched = 0 
-
-            #for j in [j0,j1,j2,j3,j4,j5]:
-            #    j.matchH = False
-
-            #for dau in genHdaughter_4vec:
-            #    for j in [j0,j1,j2,j3,j4,j5]:
-            #        if deltaR(dau.eta(),dau.phi(),j.eta(),j.phi()) < 0.4:
-            #            matched += 1
-            #            j.matchH = True
-            #print("Match fillJetInfo", matched)
-            if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                matchH1 = True
-                #print("Matched H1")
-
-            if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
-                matchH2 = True
-                #print("Matched H2")
-
-            if j4.HiggsMatch == True and j5.HiggsMatch == True and j4.HiggsMatchIndex == j5.HiggsMatchIndex:
-                matchH3 = True
-                #print("Matched H3")
-
-                       
-            self.out.fillBranch("h1_mass", h1.M())
-            self.out.fillBranch("h1_pt", h1.Pt())
-            self.out.fillBranch("h1_eta", h1.Eta())
-            self.out.fillBranch("h1_phi", h1.Phi())
-            self.out.fillBranch("h1_match", matchH1)
-
-            self.out.fillBranch("h2_mass", h2.M())
-            self.out.fillBranch("h2_pt", h2.Pt())
-            self.out.fillBranch("h2_eta", h2.Eta())
-            self.out.fillBranch("h2_phi", h2.Phi())
-            self.out.fillBranch("h2_match", matchH2)
-
-            self.out.fillBranch("h3_mass", h3.M())
-            self.out.fillBranch("h3_pt", h3.Pt())
-            self.out.fillBranch("h3_eta", h3.Eta())
-            self.out.fillBranch("h3_phi", h3.Phi())
-            self.out.fillBranch("h3_match", matchH3)
-
-            self.out.fillBranch("hhh_resolved_mass", (h1+h2+h3).M())
-            self.out.fillBranch("hhh_resolved_pt", (h1+h2+h3).Pt())
-
-            self.out.fillBranch("h1h2_mass_squared", (h1+h2).M() * (h1+h2).M())
-            self.out.fillBranch("h2h3_mass_squared", (h2+h3).M() * (h2+h3).M())
-
-            # Technique 2: mass mH1 as reference
-
-            permutations = list(itertools.permutations(jets_4vec))
-            permutations = [el[:6] for el in permutations]
-            permutations = list(set(permutations))
-
-            min_chi2 = 1000000000000000
-            for permutation in permutations:
-                j0_tmp = permutation[0]
-                j1_tmp = permutation[1]
-
-                j2_tmp = permutation[2]
-                j3_tmp = permutation[3]
-
-                j4_tmp = permutation[4]
-                j5_tmp = permutation[5]
-
-                h1_tmp = j0_tmp + j1_tmp
-                h2_tmp = j2_tmp + j3_tmp
-                h3_tmp = j4_tmp + j5_tmp
-
-                chi2 = 0
-                #for h in [h1_tmp, h2_tmp, h3_tmp]:
-                #    chi2 += (h.M() - 125.0)**2
-                higgs_tmp = [h1_tmp, h2_tmp, h3_tmp]
-                higgs_tmp.sort(key= lambda x: x.Pt(), reverse=True)
-                h1_tmp = higgs_tmp[0]
-                h2_tmp = higgs_tmp[1]
-                h3_tmp = higgs_tmp[2]
-
-
-                if chi2 < min_chi2:
-                    min_chi2 = chi2
-                    if h1_tmp.Pt() > h2_tmp.Pt():
-                        if h1_tmp.Pt() > h3_tmp.Pt():
-                            h1 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j0 = j0_tmp
-                                j1 = j1_tmp
-                            else:
-                                j0 = j1_tmp
-                                j1 = j0_tmp
-
-                            if h2_tmp.Pt() > h3_tmp.Pt():
-                                h2 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j2 = j2_tmp 
-                                    j3 = j3_tmp
-                                else:
-                                    j2 = j3_tmp
-                                    j3 = j2_tmp
-
-                                h3 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j4 = j4_tmp
-                                    j5 = j5_tmp
-                                else:
-                                    j4 = j5_tmp
-                                    j5 = j4_tmp
-                            else:
-                                h2 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j2 = j4_tmp
-                                    j3 = j5_tmp
-                                else:
-                                    j2 = j5_tmp
-                                    j3 = j4_tmp
-
-                                h3 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j4 = j2_tmp
-                                    j5 = j3_tmp
-                                else:
-                                    j4 = j3_tmp
-                                    j5 = j2_tmp
-                        else:
-                            h1 = h3_tmp
-                            if j4_tmp.Pt() > j5_tmp.Pt():
-                                j0 = j4_tmp
-                                j1 = j5_tmp
-                            else:
-                                j0 = j5_tmp
-                                j1 = j4_tmp
-
-                            h2 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-                            h3 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j4 = j2_tmp
-                                j5 = j3_tmp
-                            else:
-                                j4 = j3_tmp
-                                j5 = j2_tmp
-                    else:
-                        if h1_tmp.Pt() > h3_tmp.Pt():
-                            h1 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j0 = j2_tmp
-                                j1 = j3_tmp
-                            else:
-                                j0 = j3_tmp
-                                j1 = j2_tmp
-
-                            h2 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-
-                            h3 = h3_tmp
-                            if j4_tmp.Pt() > j5_tmp.Pt():
-                                j4 = j4_tmp
-                                j5 = j5_tmp
-                            else:
-                                j4 = j5_tmp
-                                j5 = j4_tmp
-                        else:
-                            h3 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j4 = j0_tmp
-                                j5 = j1_tmp
-                            else:
-                                j4 = j1_tmp
-                                j5 = j0_tmp
-
-                            if h2_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j0 = j2_tmp
-                                    j1 = j3_tmp
-                                else:
-                                    j0 = j3_tmp
-                                    j1 = j2_tmp
-                                h2 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j2 = j4_tmp
-                                    j3 = j5_tmp
-                                else:
-                                    j2 = j5_tmp
-                                    j3 = j4_tmp
-                            else:
-                                h1 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j0 = j4_tmp
-                                    j1 = j5_tmp
-                                else:
-                                    j0 = j5_tmp
-                                    j1 = j4_tmp
-
-                                h2 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j2 = j2_tmp
-                                    j3 = j3_tmp
-                                else:
-                                    j2 = j3_tmp
-                                    j3 = j2_tmp
-            # kin fit
-            #fitted_nll, fitted_mass = fitMass(h1.M(),15., h2.M(), 15., h3.M(), 15.)
-
-            # truth matching 
-            matchH1 = False
-            matchH2 = False
-            matchH3 = False
-            matched = 0 
-
-            #for j in [j0,j1,j2,j3,j4,j5]:
-            #    j.matchH = False
-
-            #for dau in genHdaughter_4vec:
-            #    for j in [j0,j1,j2,j3,j4,j5]:
-            #        if deltaR(dau.eta(),dau.phi(),j.eta(),j.phi()) < 0.4:
-            #            matched += 1
-            #            j.matchH = True
-            #print("Match fillJetInfo", matched)
-            if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                matchH1 = True
-                #print("Matched H1")
-
-            if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
-                matchH2 = True
-                #print("Matched H2")
-
-            if j4.HiggsMatch == True and j5.HiggsMatch == True and j4.HiggsMatchIndex == j5.HiggsMatchIndex:
-                matchH3 = True
-                #print("Matched H3")
-
-            # fill variables
-            #self.out.fillBranch("h_fit_mass", fitted_mass)
-                        
-            self.out.fillBranch("h1_t2_mass", h1.M())
-            self.out.fillBranch("h1_t2_pt", h1.Pt())
-            self.out.fillBranch("h1_t2_eta", h1.Eta())
-            self.out.fillBranch("h1_t2_phi", h1.Phi())
-            self.out.fillBranch("h1_t2_match", matchH1)
-            self.out.fillBranch("h1_t2_dRjets", deltaR(j0.eta(),j0.phi(),j1.eta(),j1.phi()))
-
-            self.out.fillBranch("h2_t2_mass", h2.M())
-            self.out.fillBranch("h2_t2_pt", h2.Pt())
-            self.out.fillBranch("h2_t2_eta", h2.Eta())
-            self.out.fillBranch("h2_t2_phi", h2.Phi())
-            self.out.fillBranch("h2_t2_match", matchH2)
-            self.out.fillBranch("h2_t2_dRjets", deltaR(j2.eta(),j2.phi(),j3.eta(),j3.phi()))
-
-            self.out.fillBranch("h3_t2_mass", h3.M())
-            self.out.fillBranch("h3_t2_pt", h3.Pt())
-            self.out.fillBranch("h3_t2_eta", h3.Eta())
-            self.out.fillBranch("h3_t2_phi", h3.Phi())
-            self.out.fillBranch("h3_t2_match", matchH3)
-            self.out.fillBranch("h3_t2_dRjets", deltaR(j4.eta(),j4.phi(),j5.eta(),j5.phi()))
-
-
-
-            # Technique 3: mass fitter
-
-            permutations = list(itertools.permutations(jets_4vec))
-            permutations = [el[:6] for el in permutations]
-            permutations = list(set(permutations))
-
-            min_chi2 = 1000000000000000
-            m_fit = -1
-            for permutation in permutations:
-                j0_tmp = permutation[0]
-                j1_tmp = permutation[1]
-
-                j2_tmp = permutation[2]
-                j3_tmp = permutation[3]
-
-                j4_tmp = permutation[4]
-                j5_tmp = permutation[5]
-
-
-                h1_tmp = j0_tmp + j1_tmp
-                h2_tmp = j2_tmp + j3_tmp
-                h3_tmp = j4_tmp + j5_tmp
-
-                #chi2, fitted_mass = fitMass(h1_tmp.M(),15., h2_tmp.M(), 15., h3_tmp.M(), 15.)
-                fitted_mass = (h1_tmp.M() + h2_tmp.M() + h3_tmp.M())/3.
-                chi2 = (h1_tmp.M() - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
-               
-                if chi2 < min_chi2:
-                    m_fit = fitted_mass
-                    min_chi2 = chi2
-                    if h1_tmp.Pt() > h2_tmp.Pt():
-                        if h1_tmp.Pt() > h3_tmp.Pt():
-                            h1 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j0 = j0_tmp
-                                j1 = j1_tmp
-                            else:
-                                j0 = j1_tmp
-                                j1 = j0_tmp
-
-                            if h2_tmp.Pt() > h3_tmp.Pt():
-                                h2 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j2 = j2_tmp 
-                                    j3 = j3_tmp
-                                else:
-                                    j2 = j3_tmp
-                                    j3 = j2_tmp
-
-                                h3 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j4 = j4_tmp
-                                    j5 = j5_tmp
-                                else:
-                                    j4 = j5_tmp
-                                    j5 = j4_tmp
-                            else:
-                                h2 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j2 = j4_tmp
-                                    j3 = j5_tmp
-                                else:
-                                    j2 = j5_tmp
-                                    j3 = j4_tmp
-
-                                h3 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j4 = j2_tmp
-                                    j5 = j3_tmp
-                                else:
-                                    j4 = j3_tmp
-                                    j5 = j2_tmp
-                        else:
-                            h1 = h3_tmp
-                            if j4_tmp.Pt() > j5_tmp.Pt():
-                                j0 = j4_tmp
-                                j1 = j5_tmp
-                            else:
-                                j0 = j5_tmp
-                                j1 = j4_tmp
-
-                            h2 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-                            h3 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j4 = j2_tmp
-                                j5 = j3_tmp
-                            else:
-                                j4 = j3_tmp
-                                j5 = j2_tmp
-                    else:
-                        if h1_tmp.Pt() > h3_tmp.Pt():
-                            h1 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j0 = j2_tmp
-                                j1 = j3_tmp
-                            else:
-                                j0 = j3_tmp
-                                j1 = j2_tmp
-
-                            h2 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-
-                            h3 = h3_tmp
-                            if j4_tmp.Pt() > j5_tmp.Pt():
-                                j4 = j4_tmp
-                                j5 = j5_tmp
-                            else:
-                                j4 = j5_tmp
-                                j5 = j4_tmp
-                        else:
-                            h3 = h1_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j4 = j0_tmp
-                                j5 = j1_tmp
-                            else:
-                                j4 = j1_tmp
-                                j5 = j0_tmp
-
-                            if h2_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j0 = j2_tmp
-                                    j1 = j3_tmp
-                                else:
-                                    j0 = j3_tmp
-                                    j1 = j2_tmp
-                                h2 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j2 = j4_tmp
-                                    j3 = j5_tmp
-                                else:
-                                    j2 = j5_tmp
-                                    j3 = j4_tmp
-                            else:
-                                h1 = h3_tmp
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j0 = j4_tmp
-                                    j1 = j5_tmp
-                                else:
-                                    j0 = j5_tmp
-                                    j1 = j4_tmp
-
-                                h2 = h2_tmp
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j2 = j2_tmp
-                                    j3 = j3_tmp
-                                else:
-                                    j2 = j3_tmp
-
-            # truth matching 
-            matchH1 = False
-            matchH2 = False
-            matchH3 = False
-            matched = 0 
-
-            #for j in [j0,j1,j2,j3,j4,j5]:
-            #    j.matchH = False
-
-            #for dau in genHdaughter_4vec:
-            #    for j in [j0,j1,j2,j3,j4,j5]:
-            #        if deltaR(dau.eta(),dau.phi(),j.eta(),j.phi()) < 0.4:
-            #            matched += 1
-            #            j.matchH = True
-            #print("Match fillJetInfo", matched)
-            if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                matchH1 = True
-                #print("Matched H1")
-
-            if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
-                matchH2 = True
-                #print("Matched H2")
-
-            if j4.HiggsMatch == True and j5.HiggsMatch == True and j4.HiggsMatchIndex == j5.HiggsMatchIndex:
-                matchH3 = True
-                #print("Matched H3")
-
-
-                       
-            self.out.fillBranch("h1_t3_mass", h1.M())
-            self.out.fillBranch("h1_t3_pt", h1.Pt())
-            self.out.fillBranch("h1_t3_eta", h1.Eta())
-            self.out.fillBranch("h1_t3_phi", h1.Phi())
-            self.out.fillBranch("h1_t3_match", matchH1)
-            self.out.fillBranch("h1_t3_dRjets", deltaR(j0.eta(),j0.phi(),j1.eta(),j1.phi()))
-
-            self.out.fillBranch("h2_t3_mass", h2.M())
-            self.out.fillBranch("h2_t3_pt", h2.Pt())
-            self.out.fillBranch("h2_t3_eta", h2.Eta())
-            self.out.fillBranch("h2_t3_phi", h2.Phi())
-            self.out.fillBranch("h2_t3_match", matchH2)
-            self.out.fillBranch("h2_t3_dRjets", deltaR(j2.eta(),j2.phi(),j3.eta(),j3.phi()))
-
-            self.out.fillBranch("h3_t3_mass", h3.M())
-            self.out.fillBranch("h3_t3_pt", h3.Pt())
-            self.out.fillBranch("h3_t3_eta", h3.Eta())
-            self.out.fillBranch("h3_t3_phi", h3.Phi())
-            self.out.fillBranch("h3_t3_match", matchH3)
-            self.out.fillBranch("h3_t3_dRjets", deltaR(j4.eta(),j4.phi(),j5.eta(),j5.phi()))
-
-
-            self.out.fillBranch("h_fit_mass", m_fit)
-
-            dic_bcands = {1: j0, 
-                          2: j1,
-                          3: j2,
-                          4: j3,
-                          5: j4,
-                          6: j5,
-                    }
-
-            for idx in ([1, 2, 3, 4, 5, 6]):
-                prefix = 'bcand%i'%idx
-                self.out.fillBranch(prefix + "Pt", dic_bcands[idx].Pt())
-                self.out.fillBranch(prefix + "Eta", dic_bcands[idx].Eta())
-                self.out.fillBranch(prefix + "Phi", dic_bcands[idx].Phi())
-                if self.isMC:
-                    self.out.fillBranch(prefix + "HiggsMatched", dic_bcands[idx].HiggsMatch)
-                    self.out.fillBranch(prefix + "HiggsMatchedIndex", dic_bcands[idx].HiggsMatchIndex)
-
-
-
-        else:
-            self.out.fillBranch("h1_mass", -1)
-            self.out.fillBranch("h1_pt", -1)
-            self.out.fillBranch("h1_eta", -1)
-            self.out.fillBranch("h1_phi", -1)
-            #self.out.fillBranch("h1_match", -1)
-
-            self.out.fillBranch("h2_mass", -1)
-            self.out.fillBranch("h2_pt", -1)
-            self.out.fillBranch("h2_eta", -1)
-            self.out.fillBranch("h2_phi", -1)
-            #self.out.fillBranch("h2_match", -1)
-
-            self.out.fillBranch("h3_mass", -1)
-            self.out.fillBranch("h3_pt", -1)
-            self.out.fillBranch("h3_eta", -1)
-            self.out.fillBranch("h3_phi", -1)
-            #self.out.fillBranch("h3_match", -1)
-
-            self.out.fillBranch("h1_t2_mass", -1)
-            self.out.fillBranch("h1_t2_pt", -1)
-            self.out.fillBranch("h1_t2_eta", -1)
-            self.out.fillBranch("h1_t2_phi", -1)
-            #self.out.fillBranch("h1_t2_match", -1)
-
-            self.out.fillBranch("h2_t2_mass", -1)
-            self.out.fillBranch("h2_t2_pt", -1)
-            self.out.fillBranch("h2_t2_eta", -1)
-            self.out.fillBranch("h2_t2_phi", -1)
-            #self.out.fillBranch("h2_t2_match", -1)
-
-            self.out.fillBranch("h3_t2_mass", -1)
-            self.out.fillBranch("h3_t2_pt", -1)
-            self.out.fillBranch("h3_t2_eta", -1)
-            self.out.fillBranch("h3_t2_phi", -1)
-            #self.out.fillBranch("h3_t2_match", -1)
-
-            self.out.fillBranch("h1_t3_mass", -1)
-            self.out.fillBranch("h1_t3_pt", -1)
-            self.out.fillBranch("h1_t3_eta", -1)
-            self.out.fillBranch("h1_t3_phi", -1)
-            #self.out.fillBranch("h1_t3_match", -1)
-
-            self.out.fillBranch("h2_t3_mass", -1)
-            self.out.fillBranch("h2_t3_pt", -1)
-            self.out.fillBranch("h2_t3_eta", -1)
-            self.out.fillBranch("h2_t3_phi", -1)
-            #self.out.fillBranch("h2_t3_match", -1)
-
-            self.out.fillBranch("h3_t3_mass", -1)
-            self.out.fillBranch("h3_t3_pt", -1)
-            self.out.fillBranch("h3_t3_eta", -1)
-            self.out.fillBranch("h3_t3_phi", -1)
-            #self.out.fillBranch("h3_t3_match", -1)
-
-            self.out.fillBranch("h_fit_mass", -1)
-
-            self.out.fillBranch("hhh_resolved_mass",-1)
-            self.out.fillBranch("hhh_resolved_pt", -1)
-
-            self.out.fillBranch("h1h2_mass_squared", -1)
-            self.out.fillBranch("h2h3_mass_squared", -1)
-
-        #print(self.reader.EvaluateMVA("BDT"))
-        self.out.fillBranch("bdt", self.reader.EvaluateMVA("bdt"))
-
-
+    def fillTauInfo(self,event,taus):
+        self.out.fillBranch("ntaus", len(taus))
+        for idx in ([1,2]):
+            t = taus[idx-1] if len(taus)> idx - 1 else _NullObject()
+            prefix = 'tau%i'%(idx)
+            fillBranch = self._get_filler(t)
+            fillBranch(prefix + "Pt", t.pt)
+            fillBranch(prefix + "Eta", t.eta)
+            fillBranch(prefix + "Phi", t.phi)
+            fillBranch(prefix + "M", t.mass)
+
+        
 
     def fillVBFFatJetInfo(self, event, fatjets):
         for idx in ([1, 2]):
@@ -2362,7 +1635,6 @@ class hhh6bProducer(Module):
         
         # basic jet selection 
         probe_jets = [fj for fj in event.fatjets if fj.pt > 200]
-        probe_jets.sort(key=lambda x: x.pt, reverse=True)
         if self._opts['option'] == "10":
             probe_jets = [fj for fj in event.fatjets if (fj.pt > 200 and fj.t32<0.54)]
             if len(probe_jets) < 1:
@@ -2393,13 +1665,13 @@ class hhh6bProducer(Module):
                 if ((probe_jets[0].msoftdropJMS>30 and probe_jets[1].msoftdropJMS>30) or (probe_jets[0].regressed_massJMS>30 and probe_jets[1].regressed_massJMS>30) or (probe_jets[0].msoftdrop>30 and probe_jets[1].msoftdrop>30)):
                     passSel=True
         elif self._opts['option'] == "0":
-            if (self.nFatJets == 0 and self.nSmallJets > 5 ): passSel = True
+            if (self.nFatJets == 0 ): passSel = True
         elif self._opts['option'] == "1":
-            if (self.nFatJets == 1 and self.nSmallJets > 5 ): passSel = True
+            if (self.nFatJets == 1 ): passSel = True
         elif self._opts['option'] == "2":
-            if (self.nFatJets == 2 and self.nSmallJets > 5 ): passSel = True
+            if (self.nFatJets == 2 ): passSel = True
         elif self._opts['option'] == "3":
-            if (self.nFatJets == 3 and self.nSmallJets > 5 ): passSel = True
+            if (self.nFatJets == 3  ): passSel = True
 
         if not passSel: return False
 
@@ -2407,44 +1679,29 @@ class hhh6bProducer(Module):
         hadGenHs = self.loadGenHistory(event, probe_jets)
         self.hadGenHs = hadGenHs
 
-        for j in event.ak4jets:
+        for j in event.alljets:
             j.HiggsMatch = False
             j.FatJetMatch = False
             j.HiggsMatchIndex = -1
             j.FatJetMatchIndex = -1
 
-        for fj in probe_jets:
-            fj.HiggsMatch = False
-            fj.HiggsMatchIndex = -1
-
         if self.isMC:
             daughters = []
-            matched = 0
             index_h = 0
             for higgs_gen in hadGenHs:
                 index_h += 1
                 for idx in higgs_gen.dauIdx:
                     dau = event.genparts[idx]
                     daughters.append(dau)
-                    for j in event.ak4jets:
+                    for j in event.alljets:
                         if deltaR(j,dau) < 0.4:
                             j.HiggsMatch = True
                             j.HiggsMatchIndex = index_h
-                            matched += 1
-                for fj in probe_jets:
-                    if deltaR(higgs_gen, fj) < 0.8:
-                        fj.HiggsMatch = True
-                        fj.HiggsMatchIndex = index_h
-
-            self.out.fillBranch("nHiggsMatchedJets", matched)
-
-        #print("Matched outside fillJetInfo", matched)
-        if self.isMC:
-            self.genHdaughter = daughters
+        self.genHdaughter = daughters
         index_fj = 0
         for fj in probe_jets:
             index_fj += 1
-            for j in event.ak4jets:
+            for j in event.alljets:
                 if deltaR(fj,j) < 0.8:
                     j.FatJetMatch = True
                     j.FatJetMatchIndex = index_fj
@@ -2456,7 +1713,9 @@ class hhh6bProducer(Module):
         # for ak4 jets we only fill the b-tagged medium jets
         #self.fillJetInfo(event, event.bmjets)
         #self.fillJetInfo(event, event.bljets)
-        self.fillJetInfo(event, event.ak4jets)
+        self.fillJetInfo(event, event.alljets)
+
+        self.fillTauInfo(event, event.allTaus)
 
         self.fillVBFFatJetInfo(event, event.vbffatjets)
         self.fillVBFJetInfo(event, event.vbfak4jets)
@@ -2470,11 +1729,11 @@ class hhh6bProducer(Module):
         return True
 
 # define modules using the syntax 'name = lambda : constructor' to avoid having them loaded when not needed
-def hhh6bProducerFromConfig():
+def hhh4b2tauProducerFromConfig():
     import sys
     #sys.path.remove('/usr/lib64/python2.7/site-packages')
     import yaml
-    with open('hhh6b_cfg.json') as f:
+    with open('hhh4b2tau_cfg.json') as f:
         cfg = yaml.safe_load(f)
         year = cfg['year']
-        return hhh6bProducer(**cfg)
+        return hhh4b2tauProducer(**cfg)

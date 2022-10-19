@@ -128,7 +128,7 @@ class JetMETCorrector(object):
             self.jerTag = 'Fall17_V3_MC'
             self.dataTags = (
                 # set the name of the tarball with a dummy run number
-                (0, 'Fall17_17Nov2017_V32_DATA'),
+                (0, 'RunBCDEF_V5_DATA'),
                 # (start run number (inclusive), 'tag name')
                 (297020, 'Fall17_17Nov2017B_V32_DATA'),
                 (299337, 'Fall17_17Nov2017C_V32_DATA'),
@@ -186,7 +186,7 @@ class JetMETCorrector(object):
             else:
                 # unc. by source
                 self.jesUncertaintyInputFileName = self.jes_uncertainty_file_prefix + self.globalTag + "_UncertaintySources_" + self.jetType + ".txt"
-            #print(self.jesInputFilePath, self.jesUncertaintyInputFileName)
+            print(self.jesInputFilePath, self.jesUncertaintyInputFileName)
             pars = ROOT.JetCorrectorParameters(
                 os.path.join(self.jesInputFilePath, self.jesUncertaintyInputFileName),
                 self.jes_source)
