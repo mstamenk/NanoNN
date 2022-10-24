@@ -651,10 +651,12 @@ class hhh6bProducer(Module):
 
         # TMVA booking
         self.reader = ROOT.TMVA.Reader("!V:Color:Silent")
-        for var in ['h_fit_mass', 'h1_t3_mass', 'h2_t3_mass', 'h3_t3_mass', 'h1_t3_dRjets', 'h2_t3_dRjets', 'h3_t3_dRjets', 'bcand1Pt', 'bcand2Pt', 'bcand3Pt', 'bcand4Pt','bcand5Pt', 'bcand6Pt', 'bcand1Eta', 'bcand2Eta', 'bcand3Eta', 'bcand4Eta', 'bcand5Eta', 'bcand6Eta', 'bcand1Phi', 'bcand2Phi', 'bcand3Phi', 'bcand4Phi', 'bcand5Phi', 'bcand6Phi']:
+        #for var in ['h_fit_mass', 'h1_t3_mass', 'h2_t3_mass', 'h3_t3_mass', 'h1_t3_dRjets', 'h2_t3_dRjets', 'h3_t3_dRjets', 'bcand1Pt', 'bcand2Pt', 'bcand3Pt', 'bcand4Pt','bcand5Pt', 'bcand6Pt', 'bcand1Eta', 'bcand2Eta', 'bcand3Eta', 'bcand4Eta', 'bcand5Eta', 'bcand6Eta', 'bcand1Phi', 'bcand2Phi', 'bcand3Phi', 'bcand4Phi', 'bcand5Phi', 'bcand6Phi']:
+        for var in ['h_fit_mass', 'h1_t3_mass', 'h2_t3_mass', 'h3_t3_mass', 'h1_t3_dRjets', 'h2_t3_dRjets', 'h3_t3_dRjets', 'bcand1Pt', 'bcand2Pt', 'bcand3Pt', 'bcand4Pt','bcand5Pt', 'bcand6Pt', 'bcand1Eta', 'bcand2Eta', 'bcand3Eta', 'bcand4Eta', 'bcand5Eta', 'bcand6Eta', 'jet1DeepFlavB','jet2DeepFlavB', 'jet3DeepFlavB', 'jet4DeepFlavB', 'jet5DeepFlavB','jet6DeepFlavB']:
             self.reader.AddVariable(var,self.out._branches[var].buff)
        
-        self.reader.BookMVA("bdt","/isilon/data/users/mstamenk/hhh-6b-producer/CMSSW_11_1_0_pre5_PY3/src/hhh-bdt/dataset/weights/TMVAClassification_BDT.weights.xml")
+        #self.reader.BookMVA("bdt","/isilon/data/users/mstamenk/hhh-6b-producer/CMSSW_11_1_0_pre5_PY3/src/hhh-bdt/dataset/weights/TMVAClassification_BDT.weights.xml")
+        self.reader.BookMVA("bdt","/isilon/data/users/mstamenk/hhh-6b-producer/CMSSW_11_1_0_pre5_PY3/src/hhh-bdt/dataset-BTAG/weights/TMVAClassification_BDT.weights.xml")
     def endFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         if self._opts['run_mass_regression'] and self._opts['WRITE_CACHE_FILE']:
             for p in self.pnMassRegressions:
