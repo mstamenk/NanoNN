@@ -1809,6 +1809,9 @@ class hhh6bProducerPNetAK4(Module):
         if self.isMC:
             hadGenH_4vec = [polarP4(h) for h in self.hadGenHs]
             genHdaughter_4vec = [polarP4(d) for d in self.genHdaughter]
+
+        # Techniques 1 & 2: Require 6 AK4 jets
+        # Actually these are obsolete compared to technique 3 which considers AK4 & AK8
         if len(jets_4vec) > 5:
             jets_4vec = jets_4vec[:6]
             #if self.nFatJets == 0:
@@ -2246,8 +2249,51 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("h3_t2_match", matchH3)
             self.out.fillBranch("h3_t2_dRjets", deltaR(j4.eta(),j4.phi(),j5.eta(),j5.phi()))
 
+        else:
+            self.out.fillBranch("h1_mass", -1)
+            self.out.fillBranch("h1_pt", -1)
+            self.out.fillBranch("h1_eta", -1)
+            self.out.fillBranch("h1_phi", -1)
+            #self.out.fillBranch("h1_match", -1)
+
+            self.out.fillBranch("h2_mass", -1)
+            self.out.fillBranch("h2_pt", -1)
+            self.out.fillBranch("h2_eta", -1)
+            self.out.fillBranch("h2_phi", -1)
+            #self.out.fillBranch("h2_match", -1)
+
+            self.out.fillBranch("h3_mass", -1)
+            self.out.fillBranch("h3_pt", -1)
+            self.out.fillBranch("h3_eta", -1)
+            self.out.fillBranch("h3_phi", -1)
+            #self.out.fillBranch("h3_match", -1)
+
+            self.out.fillBranch("h1_t2_mass", -1)
+            self.out.fillBranch("h1_t2_pt", -1)
+            self.out.fillBranch("h1_t2_eta", -1)
+            self.out.fillBranch("h1_t2_phi", -1)
+            #self.out.fillBranch("h1_t2_match", -1)
+
+            self.out.fillBranch("h2_t2_mass", -1)
+            self.out.fillBranch("h2_t2_pt", -1)
+            self.out.fillBranch("h2_t2_eta", -1)
+            self.out.fillBranch("h2_t2_phi", -1)
+            #self.out.fillBranch("h2_t2_match", -1)
+
+            self.out.fillBranch("h3_t2_mass", -1)
+            self.out.fillBranch("h3_t2_pt", -1)
+            self.out.fillBranch("h3_t2_eta", -1)
+            self.out.fillBranch("h3_t2_phi", -1)
+            #self.out.fillBranch("h3_t2_match", -1)
+
+            self.out.fillBranch("hhh_resolved_mass",-1)
+            self.out.fillBranch("hhh_resolved_pt", -1)
+
+            self.out.fillBranch("h1h2_mass_squared", -1)
+            self.out.fillBranch("h2h3_mass_squared", -1)
 
 
+        if len(jets)+2*len(fatjets) > 5:
             # Technique 3: mass fitter
             
             m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm(event,jets,fatjets)
@@ -2314,42 +2360,8 @@ class hhh6bProducerPNetAK4(Module):
                     self.out.fillBranch(prefix + "MatchedGenPt", dic_bcands[idx].MatchedGenPt)
 
 
+
         else:
-            self.out.fillBranch("h1_mass", -1)
-            self.out.fillBranch("h1_pt", -1)
-            self.out.fillBranch("h1_eta", -1)
-            self.out.fillBranch("h1_phi", -1)
-            #self.out.fillBranch("h1_match", -1)
-
-            self.out.fillBranch("h2_mass", -1)
-            self.out.fillBranch("h2_pt", -1)
-            self.out.fillBranch("h2_eta", -1)
-            self.out.fillBranch("h2_phi", -1)
-            #self.out.fillBranch("h2_match", -1)
-
-            self.out.fillBranch("h3_mass", -1)
-            self.out.fillBranch("h3_pt", -1)
-            self.out.fillBranch("h3_eta", -1)
-            self.out.fillBranch("h3_phi", -1)
-            #self.out.fillBranch("h3_match", -1)
-
-            self.out.fillBranch("h1_t2_mass", -1)
-            self.out.fillBranch("h1_t2_pt", -1)
-            self.out.fillBranch("h1_t2_eta", -1)
-            self.out.fillBranch("h1_t2_phi", -1)
-            #self.out.fillBranch("h1_t2_match", -1)
-
-            self.out.fillBranch("h2_t2_mass", -1)
-            self.out.fillBranch("h2_t2_pt", -1)
-            self.out.fillBranch("h2_t2_eta", -1)
-            self.out.fillBranch("h2_t2_phi", -1)
-            #self.out.fillBranch("h2_t2_match", -1)
-
-            self.out.fillBranch("h3_t2_mass", -1)
-            self.out.fillBranch("h3_t2_pt", -1)
-            self.out.fillBranch("h3_t2_eta", -1)
-            self.out.fillBranch("h3_t2_phi", -1)
-            #self.out.fillBranch("h3_t2_match", -1)
 
             self.out.fillBranch("h1_t3_mass", -1)
             self.out.fillBranch("h1_t3_pt", -1)
@@ -2370,12 +2382,6 @@ class hhh6bProducerPNetAK4(Module):
             #self.out.fillBranch("h3_t3_match", -1)
 
             self.out.fillBranch("h_fit_mass", -1)
-
-            self.out.fillBranch("hhh_resolved_mass",-1)
-            self.out.fillBranch("hhh_resolved_pt", -1)
-
-            self.out.fillBranch("h1h2_mass_squared", -1)
-            self.out.fillBranch("h2h3_mass_squared", -1)
 
         #print(self.reader.EvaluateMVA("BDT"))
         self.out.fillBranch("bdt", self.reader.EvaluateMVA("bdt"))
