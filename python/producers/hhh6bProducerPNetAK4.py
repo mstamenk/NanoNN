@@ -599,7 +599,7 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("h2h3_mass_squared", "F")
 
         self.out.branch("ngenvistau", "I")
-        self.out.branch("nsignaltaus","I")
+        #self.out.branch("nsignaltaus","I") # This is the same as "ntaus"
 
 
         if self.isMC and self._allJME:
@@ -727,9 +727,14 @@ class hhh6bProducerPNetAK4(Module):
             self.out.branch(prefix + "Id", "I")
             self.out.branch(prefix + "decayMode", "F")
 
-            self.out.branch(prefix + "rawDeepTau2017v2p1VSe", "F")
-            self.out.branch(prefix + "rawDeepTau2017v2p1VSjet", "F")
-            self.out.branch(prefix + "rawDeepTau2017v2p1VSmu", "F")
+            if self.Run==2: # TODO: Can switch to v2p5 for Run2UL too, if inputs have branches available
+                self.out.branch(prefix + "rawDeepTau2017v2p1VSe", "F")
+                self.out.branch(prefix + "rawDeepTau2017v2p1VSjet", "F")
+                self.out.branch(prefix + "rawDeepTau2017v2p1VSmu", "F")
+            else:
+                self.out.branch(prefix + "rawDeepTau2018v2p5VSe", "F")
+                self.out.branch(prefix + "rawDeepTau2018v2p5VSjet", "F")
+                self.out.branch(prefix + "rawDeepTau2018v2p5VSmu", "F")
 
         # gen variables
         for idx in ([1, 2, 3]):
@@ -791,6 +796,14 @@ class hhh6bProducerPNetAK4(Module):
                     return True
             return False
 
+        def isTau(gp):
+            if len(gp.dauIdx) == 0:
+                raise ValueError('Particle has no daughters!')
+            for idx in gp.dauIdx:
+                if abs(genparts[idx].pdgId) == 15:
+                    return True
+            return False
+
         def getFinal(gp):
             for idx in gp.dauIdx:
                 dau = genparts[idx]
@@ -800,9 +813,13 @@ class hhh6bProducerPNetAK4(Module):
                
         lepGenTops = []
         hadGenTops = []
+        tauGenTops = []
         hadGenWs = []
         hadGenZs = []
         hadGenHs = []
+        tauGenWs = []
+        tauGenZs = []
+        tauGenHs = []
         
         for gp in genparts:
             if gp.statusFlags & (1 << 13) == 0:
@@ -815,6 +832,8 @@ class hhh6bProducerPNetAK4(Module):
                         gp.genW = genW
                         if isHadronic(genW):
                             hadGenTops.append(gp)
+                        if isTau(genW):
+                            tauGenTops.append(gp)
                         else:
                             lepGenTops.append(gp)
                     elif abs(dau.pdgId) in (1, 3, 5):
@@ -822,28 +841,35 @@ class hhh6bProducerPNetAK4(Module):
             elif abs(gp.pdgId) == 24:
                 if isHadronic(gp):
                     hadGenWs.append(gp)
+                elif isTau(gp):
+                    tauGenWs.append(gp)
             elif abs(gp.pdgId) == 23:
                 if isHadronic(gp):
                     hadGenZs.append(gp)
+                elif isTau(gp):
+                    tauGenZs.append(gp)
             elif abs(gp.pdgId) == 25:
                 if isHadronic(gp):
                     hadGenHs.append(gp)
+                elif isTau(gp):
+                    tauGenHs.append(gp)
                          
-        for parton in itertools.chain(lepGenTops, hadGenTops):
+        for parton in itertools.chain(lepGenTops, hadGenTops, tauGenTops):
             parton.daus = (parton.genB, genparts[parton.genW.dauIdx[0]], genparts[parton.genW.dauIdx[1]])
             parton.genW.daus = parton.daus[1:]
-        for parton in itertools.chain(hadGenWs, hadGenZs, hadGenHs):
+        for parton in itertools.chain(hadGenWs, hadGenZs, hadGenHs, tauGenWs, tauGenZs, tauGenHs):
             parton.daus = (genparts[parton.dauIdx[0]], genparts[parton.dauIdx[1]])
             
         for fj in fatjets:
-            fj.genH, fj.dr_H, fj.genHidx = closest(fj, hadGenHs)
-            fj.genZ, fj.dr_Z, fj.genZidx = closest(fj, hadGenZs)
-            fj.genW, fj.dr_W, fj.genWidx = closest(fj, hadGenWs)
-            fj.genT, fj.dr_T, fj.genTidx = closest(fj, hadGenTops)
+            fj.genH, fj.dr_H, fj.genHidx = closest(fj, hadGenHs+tauGenHs)
+            fj.genZ, fj.dr_Z, fj.genZidx = closest(fj, hadGenZs+tauGenZs)
+            fj.genW, fj.dr_W, fj.genWidx = closest(fj, hadGenWs+tauGenWs)
+            fj.genT, fj.dr_T, fj.genTidx = closest(fj, hadGenTops+tauGenTops)
             fj.genLepT, fj.dr_LepT, fj.genLepidx = closest(fj, lepGenTops)
 
         hadGenHs.sort(key=lambda x: x.pt, reverse = True)
-        return hadGenHs
+        tauGenHs.sort(key=lambda x: x.pt, reverse = True)
+        return hadGenHs+tauGenHs
                
     def selectLeptons(self, event):
         # do lepton selection
@@ -890,7 +916,10 @@ class hhh6bProducerPNetAK4(Module):
 
         event.looseLeptons.sort(key=lambda x: x.pt, reverse=True)
         event.vbfLeptons.sort(key=lambda x: x.pt, reverse=True)
-        event.looseTaus.sort(key=lambda x: x.rawDeepTau2017v2p1VSjet, reverse=True)
+        if self.Run==2:
+            event.looseTaus.sort(key=lambda x: x.rawDeepTau2017v2p1VSjet, reverse=True)
+        else:
+            event.looseTaus.sort(key=lambda x: x.rawDeepTau2018v2p5VSjet, reverse=True)
 
         self.nTaus = int(len(event.looseTaus))
         self.nLeps = int(len(event.looseLeptons))
@@ -1973,7 +2002,7 @@ class hhh6bProducerPNetAK4(Module):
 
             if self.isMC:
                 self.out.fillBranch("ngenvistau",event.nGenVisTau)
-            self.out.fillBranch('nsignaltaus',len(event.looseTaus))
+            #self.out.fillBranch('nsignaltaus',len(event.looseTaus)) # This is the same as "ntaus"
                        
             self.out.fillBranch("h1_mass", h1.M())
             self.out.fillBranch("h1_pt", h1.Pt())
@@ -2416,9 +2445,14 @@ class hhh6bProducerPNetAK4(Module):
             fillBranch(prefix + "Mass", lep.mass)
             fillBranch(prefix + "Id", lep.Id)
             fillBranch(prefix + "decayMode", lep.decayMode)
-            fillBranch(prefix + "rawDeepTau2017v2p1VSe", lep.rawDeepTau2017v2p1VSe)
-            fillBranch(prefix + "rawDeepTau2017v2p1VSmu", lep.rawDeepTau2017v2p1VSmu)
-            fillBranch(prefix + "rawDeepTau2017v2p1VSjet", lep.rawDeepTau2017v2p1VSjet)
+            if self.Run==2: # TODO: Can switch to v2p5 for Run2UL too, if inputs have branches available
+                fillBranch(prefix + "rawDeepTau2017v2p1VSe", lep.rawDeepTau2017v2p1VSe)
+                fillBranch(prefix + "rawDeepTau2017v2p1VSmu", lep.rawDeepTau2017v2p1VSmu)
+                fillBranch(prefix + "rawDeepTau2017v2p1VSjet", lep.rawDeepTau2017v2p1VSjet)
+            else:
+                fillBranch(prefix + "rawDeepTau2018v2p5VSe", lep.rawDeepTau2018v2p5VSe)
+                fillBranch(prefix + "rawDeepTau2018v2p5VSmu", lep.rawDeepTau2018v2p5VSmu)
+                fillBranch(prefix + "rawDeepTau2018v2p5VSjet", lep.rawDeepTau2018v2p5VSjet)
 
 
     def higgsPairingAlgorithm(self, event, jets, fatjets):
