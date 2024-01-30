@@ -1742,7 +1742,7 @@ class hhh6bProducerPNetAK4(Module):
                     fill_fj(prefix + "Pt" + "_" + syst, fj.pt)
                     fill_fj(prefix + "PtOverMHH" + "_" + syst, fj.pt/(h1Jet+h2Jet).M())
 
-    def fillJetInfo(self, event, jets,fatjets):
+    def fillJetInfo(self, event, jets, fatjets, XbbWP):
         self.out.fillBranch("nbtags", self.nBTaggedJets)
         self.out.fillBranch("nsmalljets",self.nSmallJets)
         self.out.fillBranch("ntaus",self.nTaus)
@@ -2296,9 +2296,9 @@ class hhh6bProducerPNetAK4(Module):
         if len(jets)+2*len(fatjets) > 5:
             # Technique 3: mass fitter
             
-            m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm(event,jets,fatjets)
+            m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm(event,jets,fatjets,XbbWP)
                        
-            self.out.fillBranch("h1_t3_mass", h1.mass)
+            self.out.fillBranch("h1_t3_mass", h1.Mass)
             self.out.fillBranch("h1_t3_pt", h1.pt)
             self.out.fillBranch("h1_t3_eta", abs(h1.eta))
             self.out.fillBranch("h1_t3_phi", h1.phi)
@@ -2306,7 +2306,7 @@ class hhh6bProducerPNetAK4(Module):
             h1.dRjets = deltaR(j0.eta(),j0.phi(),j1.eta(),j1.phi())
             self.out.fillBranch("h1_t3_dRjets", h1.dRjets)
 
-            self.out.fillBranch("h2_t3_mass", h2.mass)
+            self.out.fillBranch("h2_t3_mass", h2.Mass)
             self.out.fillBranch("h2_t3_pt", h2.pt)
             self.out.fillBranch("h2_t3_eta", abs(h2.eta))
             self.out.fillBranch("h2_t3_phi", h2.phi)
@@ -2314,7 +2314,7 @@ class hhh6bProducerPNetAK4(Module):
             h2.dRjets = deltaR(j2.eta(),j2.phi(),j3.eta(),j3.phi())
             self.out.fillBranch("h2_t3_dRjets", h2.dRjets)
 
-            self.out.fillBranch("h3_t3_mass", h3.mass)
+            self.out.fillBranch("h3_t3_mass", h3.Mass)
             self.out.fillBranch("h3_t3_pt", h3.pt)
             self.out.fillBranch("h3_t3_eta", abs(h3.eta))
             self.out.fillBranch("h3_t3_phi", h3.phi)
@@ -2461,7 +2461,7 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "rawDeepTau2018v2p5VSjet", lep.rawDeepTau2018v2p5VSjet)
 
 
-    def higgsPairingAlgorithm(self, event, jets, fatjets):
+    def higgsPairingAlgorithm(self, event, jets, fatjets, XbbWP, dotaus=False, taus=[], XtautauWP=0.0):
         # save jets properties
 
         dummyJet = polarP4()
@@ -2470,6 +2470,7 @@ class hhh6bProducerPNetAK4(Module):
         dummyJet.FatJetMatch = False
         dummyJet.btagDeepFlavB = -1
         dummyJet.btagPNetB = -1
+        dummyJet.DeepTauVsJet = -1
         dummyJet.hadronFlavour = -1
         dummyJet.jetId = -1
         dummyJet.puId = -1
@@ -2480,10 +2481,28 @@ class hhh6bProducerPNetAK4(Module):
         dummyJet.cRegRes = -1
         dummyJet.MatchedGenPt = 0
         dummyJet.mass = 0.
-        
+
+        dummyHiggs = polarP4()
+        dummyHiggs.matchH1 = False
+        dummyHiggs.matchH2 = False
+        dummyHiggs.matchH3 = False
+        dummyHiggs.mass = 0.
+        dummyHiggs.Mass = 0.
+        dummyHiggs.pt = -1
+        dummyHiggs.eta = -1
+        dummyHiggs.phi = -1
+        dummyHiggs.dRjets = 0.
 
 
-        probejets = [fj for fj in fatjets if fj.pt > 250 and fj.Xbb > 0.8]
+        #probejets = [fj for fj in fatjets if fj.pt > 250 and fj.Xbb > XbbWP]
+        probejets = [fj for fj in fatjets]
+        probetau = []
+        if dotaus:
+          #probetau = sorted([fj for fj in fatjets if fj.pt > 250 and fj.Xtautau > XtautauWP], key=lambda x: x.Xtautau, reverse = True)
+          probetau = sorted([fj for fj in fatjets and fj.Xtautau > XtautauWP], key=lambda x: x.Xtautau, reverse = True)
+          if len(probetau)>0:
+            probetau = probetau[0]
+            #probejets = [fj for fj in probejets if fj!=probetau]
 
 
         #jets_4vec = [polarP4(j) for j in jets]
@@ -2491,7 +2510,7 @@ class hhh6bProducerPNetAK4(Module):
         for j in jets:
             overlap = False
             for fj in probejets:
-                if deltaR(j,fj) < 0.8: overlap = True
+                if fj!=probetau and deltaR(j,fj) < 0.8: overlap = True
             if overlap == False:
                 j_tmp = polarP4(j)
                 j_tmp.HiggsMatch = j.HiggsMatch
@@ -2499,6 +2518,7 @@ class hhh6bProducerPNetAK4(Module):
                 j_tmp.FatJetMatch = j.FatJetMatch
                 j_tmp.btagDeepFlavB = j.btagDeepFlavB
                 j_tmp.btagPNetB = j.btagPNetB
+                j_tmp.DeepTauVsJet = -1
                 if self.isMC:
                     j_tmp.hadronFlavour = j.hadronFlavour
                 j_tmp.jetId = j.jetId
@@ -2512,11 +2532,45 @@ class hhh6bProducerPNetAK4(Module):
                     j_tmp.cRegCorr = j.cRegCorr
                     j_tmp.cRegRes = j.cRegRes
 
-
                 jets_4vec.append(j_tmp)
 
+        taus_4vec = []
+        for t in taus:
+            overlap = False
+            if probetau!=[]:
+                if deltaR(t,probetau) < 0.8: overlap = True
+            if overlap == False:
+                t_tmp = polarP4(t)
+                t_tmp.HiggsMatch = t.HiggsMatch
+                t_tmp.HiggsMatchIndex = t.HiggsMatchIndex
+                t_tmp.FatJetMatch = t.FatJetMatch
+                t_tmp.charge = t.charge
+                t_tmp.btagDeepFlavB = -1
+                t_tmp.btagPNetB = -1
+                if self.Run==2:
+                    t_tmp.DeepTauVsJet = t.rawDeepTau2017v2p1VSjet
+                else:
+                    t_tmp.DeepTauVsJet = t.rawDeepTau2018v2p5VSjet
+                if self.isMC:
+                    t_tmp.hadronFlavour = -1
+                t_tmp.jetId = -1
+                t_tmp.rawFactor = -1
+                t_tmp.mass = t.mass
+                t_tmp.MatchedGenPt = t.MatchedGenPt
+                if self.Run==2:
+                    t_tmp.puId = -1
+                    t_tmp.bRegCorr = -1
+                    t_tmp.bRegRes = -1
+                    t_tmp.cRegCorr = -1
+                    t_tmp.cRegRes = -1
+
+                taus_4vec.append(t_tmp)
 
 
+        #print(len(probejets),"Probejets:",probejets)
+        #print("Probetau:",probetau)
+        #print(len(jets_4vec),"AK4 jets:",jets_4vec)
+        #print(len(taus_4vec),"Taus:",taus_4vec)
         if len(jets_4vec) > 5:
             jets_4vec = jets_4vec[:6]
 
@@ -2535,9 +2589,18 @@ class hhh6bProducerPNetAK4(Module):
 
         # 3 AK8 jets
         if len(probejets) > 2:
+            #print("HAVE 3 PROBEJETS")
             h1 = probejets[0]
             h2 = probejets[1]
             h3 = probejets[2]
+            if probetau!=[]:
+              h3 = probetau
+              event.reco4b2t_TauIsBoosted = 3
+              if h1==h3:
+                h1 = probejets[1]
+                h2 = probejets[2]
+              elif h2==h3:
+                h2 = probejets[2]
 
             if self.Run==2:
                 m_fit = (h1.particleNet_mass + h2.particleNet_mass + h3.particleNet_mass) / 3.
@@ -2547,13 +2610,13 @@ class hhh6bProducerPNetAK4(Module):
             h2.matchH2 = h2.HiggsMatch
             h3.matchH3 = h3.HiggsMatch
             if self.Run==2:
-                h1.mass = h1.particleNet_mass
-                h2.mass = h2.particleNet_mass
-                h3.mass = h3.particleNet_mass
+                h1.Mass = h1.particleNet_mass
+                h2.Mass = h2.particleNet_mass
+                h3.Mass = h3.particleNet_mass
             else:
-                h1.mass = h1.mass*h1.particleNet_massCorr
-                h2.mass = h2.mass*h2.particleNet_massCorr
-                h3.mass = h3.mass*h3.particleNet_massCorr
+                h1.Mass = h1.mass*h1.particleNet_massCorr
+                h2.Mass = h2.mass*h2.particleNet_massCorr
+                h3.Mass = h3.mass*h3.particleNet_massCorr
 
             if len(jets_4vec) > 0:
                 j0 = jets_4vec[0]
@@ -2568,63 +2631,135 @@ class hhh6bProducerPNetAK4(Module):
             if len(jets_4vec) > 5:
                 j5 = jets_4vec[5]
 
+            if not dotaus:
+                event.reco6b_3bh0h = True
+                event.reco6b_Idx = 1
+            else:
+                event.reco4b2t_3bh0h = True
+                event.reco4b2t_Idx = 1
+
         # 2 AK8 jets
         elif len(probejets) == 2:
             h1 = probejets[0]
             h2 = probejets[1]
+            if probetau!=[]:
+                h2 = probetau
+                event.reco4b2t_TauIsBoosted = 2
+                if h1==h2:
+                    h1 = probejets[1]
+
             if self.Run==2:
-                h1.mass = h1.particleNet_mass
-                h2.mass = h2.particleNet_mass
+                h1.Mass = h1.particleNet_mass
+                h2.Mass = h2.particleNet_mass
             else:
-                h1.mass = h1.mass*h1.particleNet_massCorr
-                h2.mass = h2.mass*h2.particleNet_massCorr
-
-            permutations = list(itertools.permutations(jets_4vec))
-            permutations = [el[:6] for el in permutations]
-            permutations = list(set(permutations))
-
-            min_chi2 = 1000000000000000
-            for permutation in permutations:
-                j0_tmp = permutation[0]
-                j1_tmp = permutation[1]
-
-                h3_tmp = j0_tmp + j1_tmp
-
-                fitted_mass = (h1.mass + h2.mass + h3_tmp.M())/3.
-                chi2 = (h1.mass - fitted_mass)**2 + (h2.mass - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
-
-                if chi2 < min_chi2:
-                    m_fit = fitted_mass
-                    min_chi2 = chi2
-
-                    if j0_tmp.Pt() > j1_tmp.Pt():
-                        j0 = j0_tmp
-                        j1 = j1_tmp
-                    else:
-                        j0 = j1_tmp
-                        j1 = j0_tmp
-                    if len(jets_4vec) > 2:    
-                        j2 = permutation[2] 
-                    if len(jets_4vec) > 3:
-                        j3 = permutation[3] 
-                    if len(jets_4vec) > 4:
-                        j4 = permutation[4] 
-                    if len(jets_4vec) > 5:
-                        j5 = permutation[5] 
-                        
-
-                    h3 = h3_tmp
-
-            h3.mass = h3.M()
-            h3.pt = h3.Pt()
-            h3.eta = h3.Eta()
-            h3.phi = h3.Phi()
-
+                h1.Mass = h1.mass*h1.particleNet_massCorr
+                h2.Mass = h2.mass*h2.particleNet_massCorr
             h1.matchH1 = h1.HiggsMatch
             h2.matchH2 = h2.HiggsMatch
 
+            if (not dotaus) or probetau!=[]: # All 6b, or 4b2tau if boosted Tau already selected
+                permutations = list(itertools.permutations(jets_4vec))
+                permutations = [el[:6] for el in permutations]
+                permutations = list(set(permutations))
+                if len(permutations)<2:
+                    if not dotaus:
+                        event.reco6b_2bh0h = True
+                        event.reco6b_Idx = 5
+                    else:
+                        event.reco4b2t_2bh0h = True
+                        event.reco4b2t_Idx = 5
+                    return (h1.Mass + h2.Mass)/2.,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
 
-            
+                min_chi2 = 1000000000000000
+                for permutation in permutations:
+                    j0_tmp = permutation[0]
+                    j1_tmp = permutation[1]
+
+                    h3_tmp = j0_tmp + j1_tmp
+
+                    fitted_mass = (h1.Mass + h2.Mass + h3_tmp.M())/3.
+                    chi2 = (h1.Mass - fitted_mass)**2 + (h2.Mass - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+
+                    if chi2 < min_chi2:
+                        m_fit = fitted_mass
+                        min_chi2 = chi2
+
+                        if j0_tmp.Pt() > j1_tmp.Pt():
+                            j0 = j0_tmp
+                            j1 = j1_tmp
+                        else:
+                            j0 = j1_tmp
+                            j1 = j0_tmp
+                        if len(jets_4vec) > 2:    
+                            j2 = permutation[2] 
+                        if len(jets_4vec) > 3:
+                            j3 = permutation[3] 
+                        if len(jets_4vec) > 4:
+                            j4 = permutation[4] 
+                        if len(jets_4vec) > 5:
+                            j5 = permutation[5] 
+
+                        h3 = h3_tmp
+                if not dotaus:
+                    event.reco6b_2bh1h = True
+                    event.reco6b_Idx = 2
+                else:
+                    event.reco4b2t_2bh1h = True
+                    event.reco4b2t_Idx = 2
+
+            else: # 4b2tau, third resolved Higgs must be made from two taus
+                if len(taus_4vec)<2:
+                    event.reco4b2t_2bh0h = True
+                    event.reco4b2t_Idx = 5
+                    return (h1.Mass + h2.Mass)/2.,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
+                permutations = list(itertools.permutations(taus_4vec))
+                permutations = [el[:2] for el in permutations]
+                permutations = list(set(permutations))
+
+                min_chi2 = 1000000000000000
+                for permutation in permutations:
+                    t0_tmp = permutation[0]
+                    t1_tmp = permutation[1]
+                    if t0_tmp.charge * t1_tmp.charge >= 0: continue
+
+                    h3_tmp = t0_tmp + t1_tmp
+
+                    fitted_mass = (h1.Mass + h2.Mass + h3_tmp.M())/3.
+                    chi2 = (h1.Mass - fitted_mass)**2 + (h2.Mass - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+
+                    if chi2 < min_chi2:
+                        m_fit = fitted_mass
+                        min_chi2 = chi2
+
+                        if t0_tmp.Pt() > t1_tmp.Pt():
+                            j0 = t0_tmp
+                            j1 = t1_tmp
+                        else:
+                            j0 = t1_tmp
+                            j1 = t0_tmp
+                        if len(jets_4vec) > 0:    
+                            j2 = permutation[0] 
+                        if len(jets_4vec) > 1:
+                            j3 = permutation[1] 
+                        if len(jets_4vec) > 2:
+                            j4 = permutation[2] 
+                        if len(jets_4vec) > 3:
+                            j5 = permutation[3] 
+
+                        h3 = h3_tmp
+
+                if min_chi2==1000000000000000: # Happens if opposite sign requirement not fulfilled
+                    event.reco4b2t_2bh0h = True
+                    event.reco4b2t_Idx = 5
+                    return (h1.Mass + h2.Mass)/2.,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
+                event.reco4b2t_2bh1h = True
+                event.reco4b2t_Idx = 2
+                event.reco4b2t_TauIsResolved = 3
+
+            h3.Mass = h3.M()
+            h3.pt = h3.Pt()
+            h3.eta = h3.Eta()
+            h3.phi = h3.Phi()            
             h3.matchH3 = False
             if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
                 h3.matchH3 = True
@@ -2633,34 +2768,260 @@ class hhh6bProducerPNetAK4(Module):
 
         elif len(probejets) == 1:
             h1 = probejets[0]
+            if probetau!=[]:
+                h1 = probetau
+                event.reco4b2t_TauIsBoosted = 1
             if self.Run==2:
-                h1.mass = h1.particleNet_mass
+                h1.Mass = h1.particleNet_mass
             else:
-                h1.mass = h1.mass*h1.particleNet_massCorr
+                h1.Mass = h1.mass*h1.particleNet_massCorr
+            h1.matchH1 = h1.HiggsMatch
 
-            permutations = list(itertools.permutations(jets_4vec))
-            permutations = [el[:6] for el in permutations]
-            permutations = list(set(permutations))
+            if (not dotaus) or probetau!=[]: # All 6b, or 4b2tau if boosted Tau already selected
+                permutations = list(itertools.permutations(jets_4vec))
+                permutations = [el[:6] for el in permutations]
+                permutations = list(set(permutations))
+                if len(jets_4vec)<2:
+                    if not dotaus:
+                        event.reco6b_1bh0h = True
+                        event.reco6b_Idx = 8
+                    else:
+                        event.reco4b2t_1bh0h = True
+                        event.reco4b2t_Idx = 8
+                    return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+                elif len(jets_4vec)<4:
+                    min_chi2 = 1000000000000000
+                    for permutation in permutations:
+                        j0_tmp = permutation[0]
+                        j1_tmp = permutation[1]
 
-            min_chi2 = 1000000000000000
-            for permutation in permutations:
-                j0_tmp = permutation[0]
-                j1_tmp = permutation[1]
-                j2_tmp = permutation[2]
-                j3_tmp = permutation[3]
+                        h2_tmp = j0_tmp + j1_tmp
 
-                h2_tmp = j0_tmp + j1_tmp
-                h3_tmp = j2_tmp + j3_tmp
+                        fitted_mass = (h1.Mass + h2_tmp.M())/2.
+                        chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
 
-                fitted_mass = (h1.mass + h2_tmp.M() + h3_tmp.M())/3.
-                chi2 = (h1.mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+                        if chi2 < min_chi2:
+                            m_fit = fitted_mass
+                            min_chi2 = chi2
 
-                if chi2 < min_chi2:
-                    m_fit = fitted_mass
-                    min_chi2 = chi2
-                    if h2_tmp.Pt() > h3_tmp.Pt():
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j0 = j0_tmp
+                                j1 = j1_tmp
+                            else:
+                                j0 = j1_tmp
+                                j1 = j0_tmp
+                            if len(jets_4vec) > 2:    
+                                j2 = permutation[2] 
+                            if len(jets_4vec) > 3:
+                                j3 = permutation[3] 
+                            if len(jets_4vec) > 4:
+                                j4 = permutation[4] 
+                            if len(jets_4vec) > 5:
+                                j5 = permutation[5] 
+
+                            h2 = h2_tmp
+                    h2.Mass = h2.M()
+                    h2.pt = h2.Pt()
+                    h2.eta = h2.Eta()
+                    h2.phi = h2.Phi()
+                    h2.matchH2 = False
+                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
+                        h2.matchH2 = True
+                        #print("Matched H1")
+                    if not dotaus:
+                        event.reco6b_1bh1h = True
+                        event.reco6b_Idx = 6
+                    else:
+                        event.reco4b2t_1bh1h = True
+                        event.reco4b2t_Idx = 6
+                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
+
+                min_chi2 = 1000000000000000
+                for permutation in permutations:
+                    j0_tmp = permutation[0]
+                    j1_tmp = permutation[1]
+                    j2_tmp = permutation[2]
+                    j3_tmp = permutation[3]
+
+                    h2_tmp = j0_tmp + j1_tmp
+                    h3_tmp = j2_tmp + j3_tmp
+
+                    fitted_mass = (h1.Mass + h2_tmp.M() + h3_tmp.M())/3.
+                    chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+
+                    if chi2 < min_chi2:
+                        m_fit = fitted_mass
+                        min_chi2 = chi2
+                        if h2_tmp.Pt() > h3_tmp.Pt():
+                            h2 = h2_tmp
+                            h3 = h3_tmp
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j0 = j0_tmp
+                                j1 = j1_tmp
+                            else:
+                                j0 = j1_tmp
+                                j1 = j0_tmp
+
+                            if j2_tmp.Pt() > j3_tmp.Pt():
+                                j2 = j2_tmp 
+                                j3 = j3_tmp
+                            else:
+                                j2 = j3_tmp
+                                j3 = j2_tmp
+                        else:
+                            h2 = h3_tmp
+                            h3 = h2_tmp
+                            if j2_tmp.Pt() > j3_tmp.Pt():
+                                j0 = j2_tmp 
+                                j1 = j3_tmp
+                            else:
+                                j1 = j3_tmp
+                                j0 = j2_tmp
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j2 = j0_tmp 
+                                j3 = j1_tmp
+                            else:
+                                j2 = j1_tmp
+                                j3 = j0_tmp
+
+                        if len(jets_4vec) > 4:
+                            j4 = permutation[4]
+                        if len(jets_4vec) > 5:
+                            j5 = permutation[5]
+                if not dotaus:
+                    event.reco6b_1bh2h = True
+                    event.reco6b_Idx = 3
+                else:
+                    event.reco4b2t_1bh2h = True
+                    event.reco4b2t_Idx = 3
+
+            else: # 4b2tau, one resolved Higgs must be made from two taus, and need to find the other one
+                if len(taus_4vec)<2 and len(jets_4vec)<2:
+                    event.reco4b2t_1bh0h = True
+                    event.reco4b2t_Idx = 8
+                    return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+
+                tpermutations = list(itertools.permutations(taus_4vec))
+                tpermutations = [el[:2] for el in tpermutations]
+                tpermutations = list(set(tpermutations))
+
+                jpermutations = list(itertools.permutations(jets_4vec))
+                jpermutations = [el[:6] for el in jpermutations]
+                jpermutations = list(set(jpermutations))
+
+                if len(taus_4vec)<2 or all([perm[0].charge*perm[1].charge>=0 for perm in tpermutations]):
+                    min_chi2 = 1000000000000000
+                    for permutation in jpermutations:
+                        j0_tmp = permutation[0]
+                        j1_tmp = permutation[1]
+
+                        h2_tmp = j0_tmp + j1_tmp
+
+                        fitted_mass = (h1.Mass + h2_tmp.M())/2.
+                        chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
+
+                        if chi2 < min_chi2:
+                            m_fit = fitted_mass
+                            min_chi2 = chi2
+
+                            if j0_tmp.Pt() > j1_tmp.Pt():
+                                j0 = j0_tmp
+                                j1 = j1_tmp
+                            else:
+                                j0 = j1_tmp
+                                j1 = j0_tmp
+                            if len(jets_4vec) > 2:    
+                                j2 = permutation[2] 
+                            if len(jets_4vec) > 3:
+                                j3 = permutation[3] 
+                            if len(jets_4vec) > 4:
+                                j4 = permutation[4] 
+                            if len(jets_4vec) > 5:
+                                j5 = permutation[5] 
+
+                            h2 = h2_tmp
+                    h2.Mass = h2.M()
+                    h2.pt = h2.Pt()
+                    h2.eta = h2.Eta()
+                    h2.phi = h2.Phi()
+                    h2.matchH2 = False
+                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
+                        h2.matchH2 = True
+                        #print("Matched H1")
+                    event.reco4b2t_1bh1h = True
+                    event.reco4b2t_Idx = 6
+                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
+
+                if len(jets_4vec)<2:
+                    min_chi2 = 1000000000000000
+                    for permutation in tpermutations:
+                        t0_tmp = permutation[0]
+                        t1_tmp = permutation[1]
+                        if t0_tmp.charge * t1_tmp.charge >= 0: continue
+
+                        h2_tmp = t0_tmp + t1_tmp
+
+                        fitted_mass = (h1.Mass + h2_tmp.M())/3.
+                        chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
+
+                        if chi2 < min_chi2:
+                            m_fit = fitted_mass
+                            min_chi2 = chi2
+
+                            if t0_tmp.Pt() > t1_tmp.Pt():
+                                j0 = t0_tmp
+                                j1 = t1_tmp
+                            else:
+                                j0 = t1_tmp
+                                j1 = t0_tmp
+                            if len(jets_4vec) > 0:    
+                                j2 = permutation[0] 
+                            if len(jets_4vec) > 1:
+                                j3 = permutation[1] 
+                            if len(jets_4vec) > 2:
+                                j4 = permutation[2] 
+                            if len(jets_4vec) > 3:
+                                j5 = permutation[3] 
+
                         h2 = h2_tmp
-                        h3 = h3_tmp
+
+                    if min_chi2==1000000000000000: # Happens if opposite sign requirement not fulfilled
+                        event.reco4b2t_1bh0h = True
+                        event.reco4b2t_Idx = 8
+                        return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+                    h2.Mass = h2.M()
+                    h2.pt = h2.Pt()
+                    h2.eta = h2.Eta()
+                    h2.phi = h2.Phi()
+                    h2.matchH2 = False
+                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
+                        h2.matchH2 = True
+                        #print("Matched H1")
+                    event.reco4b2t_1bh1h = True
+                    event.reco4b2t_Idx = 6
+                    event.reco4b2t_TauIsResolved = 2
+                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
+
+                fullpermutations = list(itertools.product(jpermutations, tpermutations))
+                min_chi2 = 1000000000000000
+                for permutation in fullpermutations:
+                    t0_tmp = permutation[1][0]
+                    t1_tmp = permutation[1][1]
+                    if t0_tmp.charge * t1_tmp.charge >= 0: continue
+                    j0_tmp = permutation[0][0]
+                    j1_tmp = permutation[0][1]
+
+                    h2_tmp = j0_tmp + j1_tmp
+                    h3_tmp = t0_tmp + t1_tmp
+
+                    fitted_mass = (h1.Mass + h2_tmp.M() + h3_tmp.M())/3.
+                    chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+
+                    if chi2 < min_chi2:
+                        m_fit = fitted_mass
+                        min_chi2 = chi2
+                        h2 = h2_tmp
+                        h3 = h3_tmp # Have the Tau-Higgs be always "as last as possible"
                         if j0_tmp.Pt() > j1_tmp.Pt():
                             j0 = j0_tmp
                             j1 = j1_tmp
@@ -2668,97 +3029,142 @@ class hhh6bProducerPNetAK4(Module):
                             j0 = j1_tmp
                             j1 = j0_tmp
 
-                        if j2_tmp.Pt() > j3_tmp.Pt():
-                            j2 = j2_tmp 
-                            j3 = j3_tmp
+                        if t0_tmp.Pt() > t1_tmp.Pt():
+                            j2 = t0_tmp 
+                            j3 = t1_tmp
                         else:
-                            j2 = j3_tmp
-                            j3 = j2_tmp
-                    else:
-                        h2 = h3_tmp
-                        h3 = h2_tmp
-                        if j2_tmp.Pt() > j3_tmp.Pt():
-                            j0 = j2_tmp 
-                            j1 = j3_tmp
-                        else:
-                            j1 = j3_tmp
-                            j0 = j2_tmp
-                        if j0_tmp.Pt() > j1_tmp.Pt():
-                            j2 = j0_tmp 
-                            j3 = j1_tmp
-                        else:
-                            j2 = j1_tmp
-                            j3 = j0_tmp
+                            j2 = t1_tmp
+                            j3 = t0_tmp
 
-                    if len(jets_4vec) > 4:
-                        j4 = permutation[4]
-
-                    if len(jets_4vec) > 5:
-                        j5 = permutation[5]
+                        if len(jets_4vec) > 4:
+                            j4 = permutation[0][2]
+                        if len(jets_4vec) > 5:
+                            j5 = permutation[0][3]
 
 
-            h2.mass = h2.M()
+                if min_chi2==1000000000000000:
+                    print("This shouldn't happen! We checked for valid Tau pairs before.")
+                    return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+                event.reco4b2t_1bh2h = True
+                event.reco4b2t_Idx = 3
+                event.reco4b2t_TauIsResolved = 3
+            h2.Mass = h2.M()
             h2.pt = h2.Pt()
             h2.eta = h2.Eta()
             h2.phi = h2.Phi()
-
-            h3.mass = h3.M()
-            h3.pt = h3.Pt()
-            h3.eta = h3.Eta()
-            h3.phi = h3.Phi()
-
-
-                    
-            # truth matching 
-            h1.matchH1 = h1.HiggsMatch
             h2.matchH2 = False
-            h3.matchH3 = False
-
             if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
                 h2.matchH2 = True
                 #print("Matched H1")
 
+            h3.Mass = h3.M()
+            h3.pt = h3.Pt()
+            h3.eta = h3.Eta()
+            h3.phi = h3.Phi()
+            h3.matchH3 = False
             if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
                 h3.matchH3 = True
                 #print("Matched H2")
 
         else: 
 
-            if len(jets_4vec) > 5:
-                jets_4vec = jets_4vec[:6]
+            #if (not dotaus and len(jets_4vec) > 5) or (dotaus and len(jets_4vec) > 3 and len(taus_4vec) > 1):
+            if len(jets_4vec) < 2 and len(taus_4vec) < 2:
+                if not dotaus:
+                    event.reco6b_0bh0h = True
+                    event.reco6b_Idx = 0
+                else:
+                    event.reco4b2t_0bh0h = True
+                    event.reco4b2t_Idx = 0
+                return 0,dummyHiggs,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+            else:
+                #jets_4vec = jets_4vec[:6]
                 #if self.nFatJets == 0:
                 #    if len(jets_4vec) == 6:
 
                 # Technique 3: mass fit
-                permutations = list(itertools.permutations(jets_4vec))
-                permutations = [el[:6] for el in permutations]
-                permutations = list(set(permutations))
+                jpermutations = list(itertools.permutations(jets_4vec))
+                jpermutations = [el[:6] for el in jpermutations]
+                jpermutations = list(set(jpermutations))
+                tpermutations = list(itertools.permutations(taus_4vec))
+                tpermutations = [el[:2] for el in tpermutations]
+                tpermutations = list(set(tpermutations))
+                fullpermutations = list(itertools.product(jpermutations, tpermutations))
 
                 min_chi2 = 1000000000000000
-                for permutation in permutations:
-                    j0_tmp = permutation[0]
-                    j1_tmp = permutation[1]
+                h1 = dummyHiggs
+                h2 = dummyHiggs
+                h3 = dummyHiggs
+                for permutation in fullpermutations:
+                    h_tmp = []
+                    h_tmpgood = []
+                    if len(permutation[0])>1:
+                        j0_tmp = permutation[0][0]
+                        j1_tmp = permutation[0][1]
+                        h_tmp.append(j0_tmp + j1_tmp)
+                        h_tmpgood.append(j0_tmp + j1_tmp)
+                    else:
+                        j0_tmp = dummyJet
+                        j1_tmp = dummyJet
+                        h_tmp.append(dummyHiggs)
 
-                    j2_tmp = permutation[2]
-                    j3_tmp = permutation[3]
+                    if len(permutation[0])>3:
+                        j2_tmp = permutation[0][2]
+                        j3_tmp = permutation[0][3]
+                        h_tmp.append(j2_tmp + j3_tmp)
+                        h_tmpgood.append(j2_tmp + j3_tmp)
+                    else:
+                        j2_tmp = dummyJet
+                        j3_tmp = dummyJet
+                        h_tmp.append(dummyHiggs)
 
-                    j4_tmp = permutation[4]
-                    j5_tmp = permutation[5]
+                    if not dotaus: # 6b
+                        if len(permutation[0])>5:
+                            j4_tmp = permutation[0][4]
+                            j5_tmp = permutation[0][5]
+                            h_tmp.append(j4_tmp + j5_tmp)
+                            h_tmpgood.append(j4_tmp + j5_tmp)
+                        else:
+                            j4_tmp = dummyJet
+                            j5_tmp = dummyJet
+                            h_tmp.append(dummyHiggs)
+                    else: # 4b2tau
+                        if len(permutation[1])>1:
+                            j4_tmp = permutation[1][0]
+                            j5_tmp = permutation[1][1]
+                            if j4_tmp.charge * j5_tmp.charge >= 0:
+                                j4_tmp = dummyJet
+                                j5_tmp = dummyJet
+                                h_tmp.append(dummyHiggs)
+                            else:
+                                h_tmp.append(j4_tmp + j5_tmp)
+                                h_tmpgood.append(j4_tmp + j5_tmp)
+                        else:
+                            j4_tmp = dummyJet
+                            j5_tmp = dummyJet
+                            h_tmp.append(dummyHiggs)
 
+                    if len(h_tmpgood)==0: continue # Can still happen if we have only Taus and charge requirement is failed
+                    #h1_tmp = j0_tmp + j1_tmp
+                    #h2_tmp = j2_tmp + j3_tmp
+                    #h3_tmp = j4_tmp + j5_tmp
 
-                    h1_tmp = j0_tmp + j1_tmp
-                    h2_tmp = j2_tmp + j3_tmp
-                    h3_tmp = j4_tmp + j5_tmp
-
-                    fitted_mass = (h1_tmp.M() + h2_tmp.M() + h3_tmp.M())/3.
-                    chi2 = (h1_tmp.M() - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+                    #fitted_mass = (h1_tmp.M() + h2_tmp.M() + h3_tmp.M())/3.
+                    #chi2 = (h1_tmp.M() - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
+                    fitted_mass = 0.0
+                    for h in h_tmpgood:
+                        fitted_mass += h.M()
+                    fitted_mass = fitted_mass/len(h_tmpgood)
+                    chi2 = 0.0
+                    for h in h_tmpgood:
+                        chi2 += (h.M() - fitted_mass)**2
 
                     if chi2 < min_chi2:
                         m_fit = fitted_mass
                         min_chi2 = chi2
-                        if h1_tmp.Pt() > h2_tmp.Pt():
-                            if h1_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h1_tmp
+                        if h_tmp[0].Pt() > h_tmp[1].Pt():
+                            if h_tmp[0].Pt() > h_tmp[2].Pt():# or dotaus:
+                                h1 = h_tmp[0]
                                 if j0_tmp.Pt() > j1_tmp.Pt():
                                     j0 = j0_tmp
                                     j1 = j1_tmp
@@ -2766,8 +3172,8 @@ class hhh6bProducerPNetAK4(Module):
                                     j0 = j1_tmp
                                     j1 = j0_tmp
 
-                                if h2_tmp.Pt() > h3_tmp.Pt():
-                                    h2 = h2_tmp
+                                if h_tmp[1].Pt() > h_tmp[2].Pt():# or dotaus:
+                                    h2 = h_tmp[1]
                                     if j2_tmp.Pt() > j3_tmp.Pt():
                                         j2 = j2_tmp 
                                         j3 = j3_tmp
@@ -2775,7 +3181,7 @@ class hhh6bProducerPNetAK4(Module):
                                         j2 = j3_tmp
                                         j3 = j2_tmp
 
-                                    h3 = h3_tmp
+                                    h3 = h_tmp[2]
                                     if j4_tmp.Pt() > j5_tmp.Pt():
                                         j4 = j4_tmp
                                         j5 = j5_tmp
@@ -2783,7 +3189,7 @@ class hhh6bProducerPNetAK4(Module):
                                         j4 = j5_tmp
                                         j5 = j4_tmp
                                 else:
-                                    h2 = h3_tmp
+                                    h2 = h_tmp[2]
                                     if j4_tmp.Pt() > j5_tmp.Pt():
                                         j2 = j4_tmp
                                         j3 = j5_tmp
@@ -2791,7 +3197,7 @@ class hhh6bProducerPNetAK4(Module):
                                         j2 = j5_tmp
                                         j3 = j4_tmp
 
-                                    h3 = h2_tmp
+                                    h3 = h_tmp[1]
                                     if j2_tmp.Pt() > j3_tmp.Pt():
                                         j4 = j2_tmp
                                         j5 = j3_tmp
@@ -2799,7 +3205,7 @@ class hhh6bProducerPNetAK4(Module):
                                         j4 = j3_tmp
                                         j5 = j2_tmp
                             else:
-                                h1 = h3_tmp
+                                h1 = h_tmp[2]
                                 if j4_tmp.Pt() > j5_tmp.Pt():
                                     j0 = j4_tmp
                                     j1 = j5_tmp
@@ -2807,14 +3213,14 @@ class hhh6bProducerPNetAK4(Module):
                                     j0 = j5_tmp
                                     j1 = j4_tmp
 
-                                h2 = h1_tmp
+                                h2 = h_tmp[0]
                                 if j0_tmp.Pt() > j1_tmp.Pt():
                                     j2 = j0_tmp
                                     j3 = j1_tmp
                                 else:
                                     j2 = j1_tmp
                                     j3 = j0_tmp
-                                h3 = h2_tmp
+                                h3 = h_tmp[1]
                                 if j2_tmp.Pt() > j3_tmp.Pt():
                                     j4 = j2_tmp
                                     j5 = j3_tmp
@@ -2822,8 +3228,8 @@ class hhh6bProducerPNetAK4(Module):
                                     j4 = j3_tmp
                                     j5 = j2_tmp
                         else:
-                            if h1_tmp.Pt() > h3_tmp.Pt():
-                                h1 = h2_tmp
+                            if h_tmp[0].Pt() > h_tmp[2].Pt():# or dotaus:
+                                h1 = h_tmp[1]
                                 if j2_tmp.Pt() > j3_tmp.Pt():
                                     j0 = j2_tmp
                                     j1 = j3_tmp
@@ -2831,7 +3237,7 @@ class hhh6bProducerPNetAK4(Module):
                                     j0 = j3_tmp
                                     j1 = j2_tmp
 
-                                h2 = h1_tmp
+                                h2 = h_tmp[0]
                                 if j0_tmp.Pt() > j1_tmp.Pt():
                                     j2 = j0_tmp
                                     j3 = j1_tmp
@@ -2839,7 +3245,7 @@ class hhh6bProducerPNetAK4(Module):
                                     j2 = j1_tmp
                                     j3 = j0_tmp
 
-                                h3 = h3_tmp
+                                h3 = h_tmp[2]
                                 if j4_tmp.Pt() > j5_tmp.Pt():
                                     j4 = j4_tmp
                                     j5 = j5_tmp
@@ -2847,7 +3253,7 @@ class hhh6bProducerPNetAK4(Module):
                                     j4 = j5_tmp
                                     j5 = j4_tmp
                             else:
-                                h3 = h1_tmp
+                                h3 = h_tmp[0]
                                 if j0_tmp.Pt() > j1_tmp.Pt():
                                     j4 = j0_tmp
                                     j5 = j1_tmp
@@ -2855,15 +3261,15 @@ class hhh6bProducerPNetAK4(Module):
                                     j4 = j1_tmp
                                     j5 = j0_tmp
 
-                                if h2_tmp.Pt() > h3_tmp.Pt():
-                                    h1 = h2_tmp
+                                if h_tmp[1].Pt() > h_tmp[2].Pt():# or dotaus:
+                                    h1 = h_tmp[1]
                                     if j2_tmp.Pt() > j3_tmp.Pt():
                                         j0 = j2_tmp
                                         j1 = j3_tmp
                                     else:
                                         j0 = j3_tmp
                                         j1 = j2_tmp
-                                    h2 = h3_tmp
+                                    h2 = h_tmp[2]
                                     if j4_tmp.Pt() > j5_tmp.Pt():
                                         j2 = j4_tmp
                                         j3 = j5_tmp
@@ -2871,7 +3277,7 @@ class hhh6bProducerPNetAK4(Module):
                                         j2 = j5_tmp
                                         j3 = j4_tmp
                                 else:
-                                    h1 = h3_tmp
+                                    h1 = h_tmp[2]
                                     if j4_tmp.Pt() > j5_tmp.Pt():
                                         j0 = j4_tmp
                                         j1 = j5_tmp
@@ -2879,7 +3285,7 @@ class hhh6bProducerPNetAK4(Module):
                                         j0 = j5_tmp
                                         j1 = j4_tmp
 
-                                    h2 = h2_tmp
+                                    h2 = h_tmp[1]
                                     if j2_tmp.Pt() > j3_tmp.Pt():
                                         j2 = j2_tmp
                                         j3 = j3_tmp
@@ -2887,43 +3293,76 @@ class hhh6bProducerPNetAK4(Module):
                                         j2 = j3_tmp
                                         j3 = j2_tmp
 
+                if h1==dummyHiggs:
+                    if not dotaus:
+                        event.reco6b_0bh0h = True
+                        event.reco6b_Idx = 0
+                    else:
+                        event.reco4b2t_0bh0h = True
+                        event.reco4b2t_Idx = 0
+                    return 0,dummyHiggs,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+                else:
+                    h1.Mass = h1.M()
+                    h1.pt = h1.Pt()
+                    h1.eta = h1.Eta()
+                    h1.phi = h1.Phi()
+                    h1.matchH1 = False
+                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
+                        h1.matchH1 = True
+                        #print("Matched H1")
 
-                # truth matching 
-                h1.matchH1 = False
-                h2.matchH2 = False
-                h3.matchH3 = False
+                if h2==dummyHiggs:
+                    if not dotaus:
+                        event.reco6b_0bh1h = True
+                        event.reco6b_Idx = 9
+                    else:
+                        event.reco4b2t_0bh1h = True
+                        event.reco4b2t_Idx = 9
+                        if j0.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 1
+                    return m_fit,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
+                else:
+                    h2.Mass = h2.M()
+                    h2.pt = h2.Pt()
+                    h2.eta = h2.Eta()
+                    h2.phi = h2.Phi()
+                    h2.matchH2 = False
+                    if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
+                        h2.matchH2 = True
+                        #print("Matched H2")
 
-                h1.mass = h1.M()
-                h1.pt = h1.Pt()
-                h1.eta = h1.Eta()
-                h1.phi = h1.Phi()
+                if h3==dummyHiggs:
+                    if not dotaus:
+                        event.reco6b_0bh2h = True
+                        event.reco6b_Idx = 7
+                    else:
+                        event.reco4b2t_0bh2h = True
+                        event.reco4b2t_Idx = 7
+                        if j0.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 1
+                        elif j2.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 2
+                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
+                else:
+                    h3.Mass = h3.M()
+                    h3.pt = h3.Pt()
+                    h3.eta = h3.Eta()
+                    h3.phi = h3.Phi()
+                    h3.matchH3 = False
+                    if j4.HiggsMatch == True and j5.HiggsMatch == True and j4.HiggsMatchIndex == j5.HiggsMatchIndex:
+                        h3.matchH3 = True
+                        #print("Matched H3")
 
-                h2.mass = h2.M()
-                h2.pt = h2.Pt()
-                h2.eta = h2.Eta()
-                h2.phi = h2.Phi()
+                    if not dotaus:
+                        event.reco6b_0bh3h = True
+                        event.reco6b_Idx = 4
+                    else:
+                        event.reco4b2t_0bh3h = True
+                        event.reco4b2t_Idx = 4
+                        if j0.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 1
+                        elif j2.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 2
+                        elif j4.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 3
 
-                h3.mass = h3.M()
-                h3.pt = h3.Pt()
-                h3.eta = h3.Eta()
-                h3.phi = h3.Phi()
-
-
-
-
-                if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                    h1.matchH1 = True
-                    #print("Matched H1")
-
-                if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
-                    h2.matchH2 = True
-                    #print("Matched H2")
-
-                if j4.HiggsMatch == True and j5.HiggsMatch == True and j4.HiggsMatchIndex == j5.HiggsMatchIndex:
-                    h3.matchH3 = True
-                    #print("Matched H3")
-
-        return m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5  
+        #print("6b FS:",9*event.reco6b_0bh1h+8*event.reco6b_1bh0h+7*event.reco6b_0bh2h+6*event.reco6b_1bh1h+5*event.reco6b_2bh0h+4*event.reco6b_0bh3h+3*event.reco6b_1bh2h+2*event.reco6b_2bh1h+event.reco6b_3bh0h)
+        #print("4b2t FS:",9*event.reco4b2t_0bh1h+8*event.reco4b2t_1bh0h+7*event.reco4b2t_0bh2h+6*event.reco4b2t_1bh1h+5*event.reco4b2t_2bh0h+4*event.reco4b2t_0bh3h+3*event.reco4b2t_1bh2h+2*event.reco4b2t_2bh1h+event.reco4b2t_3bh0h)
+        return m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5
 
     def fillTriggerFilters(self, event):
 
@@ -3094,10 +3533,16 @@ class hhh6bProducerPNetAK4(Module):
         # fill output branches
         self.fillBaseEventInfo(event, probe_jets, hadGenHs)
 
-        if self.Run==2:
-            self.out.fillBranch("nprobejets", len([fj for fj in probe_jets if fj.pt > 250 and fj.Xbb / (fj.Xbb + fj.particleNetMD_QCD) > 0.9105]))
-        else:
-            self.out.fillBranch("nprobejets", len([fj for fj in probe_jets if fj.pt > 250 and fj.Xbb / (fj.Xbb + fj.particleNet_QCD) > 0.9105]))
+        # Low purity WP (https://cms.cern.ch/iCMS/jsp/db_notes/noteInfo.jsp?cmsnoteid=CMS%20AN-2021/005)
+        XbbWP = {"2016APV": 0.9088,
+                 "2016"   : 0.9137,
+                 "2017"   : 0.9105,
+                 "2018"   : 0.9172,
+                 "2022"   : 0.5, # 2022: Test with low cut
+                 "2022EE" : 0.5}[self.year]
+                 #"2022"   : 0.91255, # 2022: Temporary average value from Run2
+                 #"2022EE" : 0.91255}[self.year]
+        self.out.fillBranch("nprobejets", len([fj for fj in probe_jets if fj.pt > 200 and fj.Xbb > XbbWP]))
         #print(len(probe_jets))
         #if len(probe_jets) > 0:
         self.fillFatJetInfo(event, probe_jets)
@@ -3106,7 +3551,7 @@ class hhh6bProducerPNetAK4(Module):
         #self.fillJetInfo(event, event.bmjets)
         #self.fillJetInfo(event, event.bljets)
         try:
-            self.fillJetInfo(event, event.ak4jets, probe_jets)
+            self.fillJetInfo(event, event.ak4jets, probe_jets, XbbWP)
         except IndexError:
             return False
 
