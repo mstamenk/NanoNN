@@ -56,10 +56,14 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
     dummyHiggs.phi = -99.
     dummyHiggs.dRjets = -1.
 
-    probetau = sorted([fj for fj in fatjets if fj.Xtauany > XtautauWP], key=lambda x: x.Xtauany, reverse = True)
+    # Prepare FatJets
+    AK4jetsfromAK8 = [fj for fj in fatjets if fj.t21>0.55 or fj.n3b1<=0]
+    AK8fatjets = [fj for fj in fatjets if fj not in AK4jetsfromAK8]
+
+    probetau = sorted([fj for fj in AK8fatjets if fj.Xtauany > XtautauWP], key=lambda x: x.Xtauany, reverse = True)
     if len(probetau)>0:
         probetau = probetau[0]
-    probejets = sorted([fj for fj in fatjets if fj.Xbb > XbbWP and fj!=probetau], key=lambda x: x.Xbb, reverse = True)
+    probejets = sorted([fj for fj in AK8fatjets if fj.Xbb > XbbWP and fj!=probetau], key=lambda x: x.Xbb, reverse = True)
     if len(probejets) > 4:
         probejets = probejets[:4]
     if probetau!=[]:
@@ -85,12 +89,12 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
         covMET[0][1] = METvars[3]
         covMET[1][1] = METvars[4]
 
-
+    # Prepare Leptons
     leptons_4vec = []
     for l in leptons:
         overlap = False
         for fj in probejets:
-            if deltaR(l,fj) < 0.8: overlap = True
+            if deltaR(l,fj) < 1.0: overlap = True
         if overlap == False:
             l_tmp = polarP4(l)
             l_tmp.HiggsMatch = l.HiggsMatch
@@ -121,21 +125,22 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
     if len(leptons_4vec) > 4:
         leptons_4vec = leptons_4vec[:4]
 
+    # Prepare Taus
     taus_4vec = []
     for t in taus:
         if Run==2:
-            if t.rawDeepTau2017v2p1VSe < TauVsEl: continue
-            if t.rawDeepTau2017v2p1VSmu < TauVsMu: continue
-            if t.rawDeepTau2017v2p1VSjet < TauVsJet: continue
+            if t.idDeepTau2017v2p1VSe < TauVsEl: continue
+            if t.idDeepTau2017v2p1VSmu < TauVsMu: continue
+            if t.idDeepTau2017v2p1VSjet < TauVsJet: continue
         else:
-            if t.rawDeepTau2018v2p5VSe < TauVsEl: continue
-            if t.rawDeepTau2018v2p5VSmu < TauVsMu: continue
-            if t.rawDeepTau2018v2p5VSjet < TauVsJet: continue
+            if t.idDeepTau2018v2p5VSe < TauVsEl: continue
+            if t.idDeepTau2018v2p5VSmu < TauVsMu: continue
+            if t.idDeepTau2018v2p5VSjet < TauVsJet: continue
         overlap = False
         for fj in probejets:
-            if deltaR(t,fj) < 0.8: overlap = True
+            if deltaR(t,fj) < 1.0: overlap = True
         for l in leptons_4vec:
-            if deltaR(t.eta,t.phi,l.Eta(),l.Phi()) < 0.4: overlap = True
+            if deltaR(t.eta,t.phi,l.Eta(),l.Phi()) < 0.5: overlap = True
         if overlap == False:
             t_tmp = polarP4(t)
             t_tmp.HiggsMatch = t.HiggsMatch
@@ -169,6 +174,7 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
     if len(taus_4vec) > 4:
         taus_4vec = taus_4vec[:4]
 
+    # Make Lepton-Tau candidate pairs
     if dotaus:
       taulepton_4vec = taus_4vec+leptons_4vec
     else:
@@ -195,16 +201,16 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
     taupairs_leplep = [p for p in taupairs if p[6] in [-11*13,-13*13,-11*11]] # All e-mu/mu-mu/e-e pairs. Not sorted, so should be sorted by pT already
     taupairs = taupairs_tautau + taupairs_leptau + taupairs_leplep # Merge like this
 
-
+    # Prepare (AK4) Jets
     jets_4vec = []
     for j in jets:
         if jetdicsr!="":
             if getattr(j, jetdicsr) < jetWP: continue
         overlap = False
         for fj in probejets:
-            if deltaR(j,fj) < 0.8: overlap = True
+            if deltaR(j,fj) < 1.0: overlap = True
         for t in taus_4vec:
-            if deltaR(j.eta,j.phi,t.Eta(),t.Phi()) < 0.4: overlap = True
+            if deltaR(j.eta,j.phi,t.Eta(),t.Phi()) < 0.5: overlap = True
         # Jet-Lepton overlap already done before
         if overlap == False:
             j_tmp = polarP4(j)
@@ -232,9 +238,51 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
 
             jets_4vec.append(j_tmp)
 
+    # Add FatJets which are identified to be AK4 jets to AK4 jets collection
+    for ak4j in AK4jetsfromAK8:
+        if ak4j.Xbb < XbbWP: continue # Going to assume that only AK4 jets can be mis-ID'd as AK8, not Taus as AK8 (We couldn't treat those as actual Taus anyway if we're missing info such as decay mode)
+        i=1
+        for fj in fatjets:
+            if ak4j==fj: break
+            i+=1
+        overlap = False
+        for j in jets:
+            if j.FatJetMatchIndex == i: overlap=True
+        for t in taus_4vec:
+            if deltaR(ak4j.eta,ak4j.phi,t.Eta(),t.Phi()) < 0.5: overlap = True
+        for l in leptons_4vec:
+            if deltaR(ak4j.eta,ak4j.phi,l.Eta(),l.Phi()) < 0.5: overlap = True
+        if overlap == False:
+            j_tmp = polarP4(ak4j)
+            j_tmp.HiggsMatch = ak4j.HiggsMatch
+            j_tmp.HiggsMatchIndex = ak4j.HiggsMatchIndex
+            j_tmp.FatJetMatch = False
+            j_tmp.btagDeepFlavB = -1
+            j_tmp.btagPNetB = ak4j.Xbb
+            j_tmp.DM = -1
+            j_tmp.kind = -1
+            j_tmp.DeepTauVsJet = -1
+            if isMC:
+                j_tmp.hadronFlavour = ak4j.hadronFlavour
+            j_tmp.jetId = ak4j.jetId
+            j_tmp.pdgId = -1
+            j_tmp.rawFactor = ak4j.rawFactor
+            j_tmp.mass = ak4j.mass
+            j_tmp.MatchedGenPt = ak4j.MatchedGenPt
+            if Run==2:
+                j_tmp.puId = -1
+                j_tmp.bRegCorr = -1
+                j_tmp.bRegRes = -1
+                j_tmp.cRegCorr = -1
+                j_tmp.cRegRes = -1
+            jets_4vec.append(j_tmp)
+
+    jets_4vec = sorted([j for j in jets_4vec], key=lambda x: x.btagPNetB, reverse = True)
+
     if len(jets_4vec) > 10:
         jets_4vec = jets_4vec[:10]
 
+    # Make resolved jet candidate pairs
     jetpairs = []
     for i1,j1 in enumerate(jets_4vec):
       for i2,j2 in enumerate(jets_4vec):
@@ -242,7 +290,7 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
         jetpairs.append((i1,i2,(j1+j2),j1.btagPNetB*j2.btagPNetB,"Jet",(j1+j2).M())) # IdxJet1, IdxJet2, RecoHiggs, Comb.BtagScore, "Jet", RecoHiggsMass
     jetpairs = sorted([p for p in jetpairs], key=lambda x: x[3], reverse = True)
 
-
+    # Combine all boosted FatJet and resolved pair candidates
     allobjects = {}
     for i,fj in enumerate(probejets):
       if fj!=probetau: allobjects["FJ"+str(i+1)] = fj
@@ -332,6 +380,7 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
           # The reconstructed Higgs mass depends on its pT
           if name.startswith("F"):
             masses.append(allobjects[name].mass)
+            pt = allobjects[name].pt
             if "Tau" in name:
               # Generally lower than Hbb FatJets because neutrino contribution is completely missing here
               expmasses.append(-61.585812326376264 + 0.05557800375177941*pt + 160.86030949003612 * math.erf(0.00369513146940551*pt))
@@ -363,12 +412,17 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, jetdicsr, j
         h[i].dRjets = -1
         if "Tau" in finalPermutation[i]:
           TauIsBoosted = i+1
-          if h[i].Xtautau > h[i].Xtaumu and h[i].Xtautau > h[i].Xtaue:
-            TauFinalState = -15*15
-          elif h[i].Xtaumu > h[i].Xtaue:
+          if h[i].hasMuon and h[i].hasElectron:
+            if h[i].Xtaumu > h[i].Xtaue:
+              TauFinalState = -13*15
+            else:
+              TauFinalState = -11*15
+          elif h[i].hasMuon:
             TauFinalState = -13*15
-          else:
+          elif h[i].hasElectron:
             TauFinalState = -11*15
+          else:
+            TauFinalState = -15*15
       else:
         h[i] = allobjects[finalPermutation[i]][2]
         h[i].Mass = allobjects[finalPermutation[i]][5] # h[i].M()

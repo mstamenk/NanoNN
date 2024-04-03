@@ -696,8 +696,6 @@ class hhh6bProducerPNetAK4(Module):
     def selectLeptons(self, event):
         # do lepton selection
         event.looseLeptons = []  # used for lepton counting
-        event.cleaningElectrons = []
-        event.cleaningMuons = []
         event.looseTaus = [] # store taus
         
         electrons = Collection(event, "Electron")
@@ -712,12 +710,6 @@ class hhh6bProducerPNetAK4(Module):
             else:
                 if el.pt > 10 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.miniPFRelIso_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaNoIso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
                     event.looseLeptons.append(el)
-            if self.Run==2:
-                if el.pt > 30 and el.mvaFall17V2noIso_WP90:
-                    event.cleaningElectrons.append(el)
-            else:
-                if el.pt > 30 and el.mvaNoIso_WP90:
-                    event.cleaningElectrons.append(el)
 
         muons = Collection(event, "Muon")
         for mu in muons:
@@ -726,8 +718,6 @@ class hhh6bProducerPNetAK4(Module):
             mu.mass = 0.10566
             if mu.pt > 10 and abs(mu.eta) <= 2.4 and abs(mu.dxy) < 0.045 and abs(mu.dz) < 0.2 and mu.mediumId and mu.miniPFRelIso_all <= 0.2: # mu.tightId
                 event.looseLeptons.append(mu)
-            if mu.pt > 30 and mu.looseId:
-                event.cleaningMuons.append(mu)
 
         taus = Collection(event, "Tau")
         for tau in taus:
@@ -933,10 +923,18 @@ class hhh6bProducerPNetAK4(Module):
         for j in ak4jets_unclean:
             goodjet = True
             for l in event.looseLeptons: # +event.looseTaus # Don't clean with Taus yet, when Taus have only very loostest WPs applied -> Might be genuine Jets
-                if j.DeltaR(l) < 0.4:
+                if j.DeltaR(l) < 0.5:
                     goodjet = False
                     break
             if goodjet: event.ak4jets.append(j)
+        looseMuons = [l for l in event.looseLeptons if abs(l.Id)==13]
+        looseElectrons = [l for l in event.looseLeptons if abs(l.Id)==11]
+        for j in event.ak4jets:
+            j.hasMuon = True if (closest(j, looseMuons)[1] < 1.0) else False
+            j.hasElectron = True if (closest(j, looseElectrons)[1] < 1.0) else False
+        for j in event.fatjets:
+            j.hasMuon = True if (closest(j, looseMuons)[1] < 1.0) else False
+            j.hasElectron = True if (closest(j, looseElectrons)[1] < 1.0) else False
 
         self.nFatJets = int(len(event.fatjets))
         self.nSmallJets = int(len(event.ak4jets))
@@ -951,7 +949,7 @@ class hhh6bProducerPNetAK4(Module):
         for j in event._allJets:
             #overlap = False
             #for fj in event.fatjets:
-            #    if deltaR(fj,j) < 0.8: overlap = True # calculate overlap between small r jets and fatjets
+            #    if deltaR(fj,j) < 1.0: overlap = True # calculate overlap between small r jets and fatjets
             #if overlap: continue
             if self.Run==2:
                 pNetSum = j.ParticleNetAK4_probb + j.ParticleNetAK4_probbb + j.ParticleNetAK4_probc + j.ParticleNetAK4_probcc + j.ParticleNetAK4_probg + j.ParticleNetAK4_probuds
@@ -1289,21 +1287,17 @@ class hhh6bProducerPNetAK4(Module):
                 fill_fj(prefix + "MassSD_noJMS", fj.msoftdrop)
                 fill_fj(prefix + "MassSD", fj.msoftdropJMS)
             
-            # lepton variables
+            # overlap variables
             if fj:
-                hasMuon = True if (closest(fj, event.cleaningMuons)[1] < 1.0) else False
-                hasElectron = True if (closest(fj, event.cleaningElectrons)[1] < 1.0) else False
                 hasBJetCSVLoose = True if (closest(fj, event.bljets)[1] < 1.0) else False
                 hasBJetCSVMedium = True if (closest(fj, event.bmjetsCSV)[1] < 1.0) else False
                 hasBJetCSVTight = True if (closest(fj, event.btjets)[1] < 1.0) else False
             else:
-                hasMuon = False
-                hasElectron = False
                 hasBJetCSVLoose = False
                 hasBJetCSVMedium = False
                 hasBJetCSVTight = False
-            fill_fj(prefix + "HasMuon", hasMuon)
-            fill_fj(prefix + "HasElectron", hasElectron)
+            fill_fj(prefix + "HasMuon", fj.hasMuon)
+            fill_fj(prefix + "HasElectron", fj.hasElectron)
             fill_fj(prefix + "HasBJetCSVLoose", hasBJetCSVLoose)
             fill_fj(prefix + "HasBJetCSVMedium", hasBJetCSVMedium)
             fill_fj(prefix + "HasBJetCSVTight", hasBJetCSVTight)
@@ -1356,7 +1350,7 @@ class hhh6bProducerPNetAK4(Module):
         for syst in self._jmeLabels:
             if syst == 'nominal': continue
             if len(event.fatjetsJME[syst]) < 2 or len(fatjets)<2: 
-                for idx in ([1, 2]):
+                for idx in ([1, 2, 3, 4]):
                     prefix = 'fatJet%i' % idx
                     self.out.fillBranch(prefix + "Pt" + "_" + syst, 0)
                     self.out.fillBranch(prefix + "PtOverMHH" + "_" + syst, 0)
@@ -1374,7 +1368,7 @@ class hhh6bProducerPNetAK4(Module):
                     print('fj2pt, nominal: %.4f, syst: %.4f'%(fatjets[1].pt,event.fatjetsJME[syst][1].pt))
                 """
 
-                for idx in ([1, 2]):
+                for idx in ([1, 2, 3, 4]):
                     prefix = 'fatJet%i' % idx
                     fj = event.fatjetsJME[syst][idx - 1]
                     fill_fj = self._get_filler(fj)
@@ -1406,8 +1400,6 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "bRegRes", j.bRegRes)
                 fillBranch(prefix + "cRegCorr", j.cRegCorr)
                 fillBranch(prefix + "cRegRes", j.cRegRes)
-
-
             if self.isMC:
                 fillBranch(prefix + "HadronFlavour", j.hadronFlavour)
                 fillBranch(prefix + "HiggsMatched", j.HiggsMatch)
@@ -1415,15 +1407,8 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "FatJetMatched", j.FatJetMatch)
                 fillBranch(prefix + "FatJetMatchedIndex", j.FatJetMatchIndex)
                 fillBranch(prefix + "MatchedGenPt", j.MatchedGenPt)
-            if j:
-                hasMuon = True if (closest(j, event.cleaningMuons)[1] < 0.5) else False
-                hasElectron = True if (closest(j, event.cleaningElectrons)[1] < 0.5) else False
-            else:
-                hasMuon = False
-                hasElectron = False
-
-            fillBranch(prefix + "HasMuon", hasMuon)
-            fillBranch(prefix + "HasElectron", hasElectron)
+            fillBranch(prefix + "HasMuon", j.hasMuon)
+            fillBranch(prefix + "HasElectron", j.hasElectron)
 
         if self.isMC:
             hadGenH_4vec = [polarP4(h) for h in self.hadGenHs]
@@ -1615,7 +1600,7 @@ class hhh6bProducerPNetAK4(Module):
         for j in jets:
             overlap = False
             for fj in probejets:
-                if fj!=probetau and deltaR(j,fj) < 0.8: overlap = True
+                if fj!=probetau and deltaR(j,fj) < 1.0: overlap = True
             if overlap == False:
                 j_tmp = polarP4(j)
                 j_tmp.HiggsMatch = j.HiggsMatch
@@ -1643,7 +1628,7 @@ class hhh6bProducerPNetAK4(Module):
         for t in taus:
             overlap = False
             if probetau!=[]:
-                if deltaR(t,probetau) < 0.8: overlap = True
+                if deltaR(t,probetau) < 1.0: overlap = True
             if overlap == False:
                 t_tmp = polarP4(t)
                 t_tmp.HiggsMatch = t.HiggsMatch
@@ -2510,7 +2495,7 @@ class hhh6bProducerPNetAK4(Module):
         
         # basic jet selection 
         #probe_jets = [fj for fj in event.fatjets if fj.pt > 300 and fj.Xbb > 0.8]
-        probe_jets = [fj for fj in event.fatjets if fj.pt > 215 and abs(fj.eta) < 2.5 and fj.jetId >= 2] # 215 GeV cut good for PNet scores
+        probe_jets = [fj for fj in event.fatjets if fj.pt > 265 and abs(fj.eta) < 2.5 and fj.jetId >= 2] # 215 GeV cut good for PNet scores # 265 GeV for cut to use n3b1 to filter AK4 contamination
         
         #probe_jets.sort(key=lambda x: x.pt, reverse=True)
         probe_jets.sort(key=lambda x: x.Xbb, reverse=True)
@@ -2588,7 +2573,7 @@ class hhh6bProducerPNetAK4(Module):
                     for j in event.ak4jets+event.looseTaus+event.looseLeptons:
                         if j in event.ak4jets and abs(dau.pdgId)!=5: continue
                         if j in event.looseTaus+event.looseLeptons and abs(dau.pdgId)==5: continue
-                        if deltaR(j,dau) < 0.4:
+                        if deltaR(j,dau) < 0.5:
                             j.HiggsMatch = True
                             j.HiggsMatchIndex = index_h+1
                             j.MatchedGenPt = dau.pt
@@ -2596,7 +2581,7 @@ class hhh6bProducerPNetAK4(Module):
                             matchedthishiggs.append(j)
                             matchedthisdau.append(dau)
                 # Get the invariant mass of gen-matched objects, fot both Hbb and Htautau
-                if len(matchedthishiggs)==2 and matchedthisdau[0]!=matchedthisdau[1] and deltaR(matchedthishiggs[0],matchedthishiggs[1])>0.4:
+                if len(matchedthishiggs)==2 and matchedthisdau[0]!=matchedthisdau[1] and deltaR(matchedthishiggs[0],matchedthishiggs[1])>0.5:
                     combgen = polarP4(matchedthishiggs[0])+polarP4(matchedthishiggs[1])
                     dau1pdgid = daughters[-2].pdgId
                     dau2pdgid = daughters[-1].pdgId
@@ -2642,7 +2627,7 @@ class hhh6bProducerPNetAK4(Module):
                     self.out.fillBranch(f"genHiggs{index_h+1}RecoPhi", -1)
                     self.out.fillBranch(f"genHiggs{index_h+1}RecoMass", -1)
                 for fj in probe_jets:
-                    if deltaR(higgs_gen, fj) < 0.8:
+                    if deltaR(higgs_gen, fj) < 1.0:
                         fj.HiggsMatch = True
                         fj.HiggsMatchIndex = index_h+1
                         fj.MatchedGenPt = higgs_gen.pt
@@ -2656,7 +2641,7 @@ class hhh6bProducerPNetAK4(Module):
         for fj in probe_jets:
             index_fj += 1
             for j in event.ak4jets+event.looseTaus+event.looseLeptons:
-                if deltaR(fj,j) < 0.8:
+                if deltaR(fj,j) < 1.0:
                     j.FatJetMatch = True
                     j.FatJetMatchIndex = index_fj
 
