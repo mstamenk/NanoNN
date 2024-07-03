@@ -445,6 +445,14 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("h1_4b2t_mass", "F")
         self.out.branch("h1_4b2t_match", "I")
         self.out.branch("h1_4b2t_dRjets", "F")
+        self.out.branch("h1_4b2t_FJ1idx", "I")
+        self.out.branch("h1_4b2t_FJ2idx", "I")
+        self.out.branch("h1_4b2t_J1idx", "I")
+        self.out.branch("h1_4b2t_J2idx", "I")
+        self.out.branch("h1_4b2t_T1idx", "I")
+        self.out.branch("h1_4b2t_T2idx", "I")
+        self.out.branch("h1_4b2t_L1idx", "I")
+        self.out.branch("h1_4b2t_L2idx", "I")
 
         self.out.branch("h2_4b2t_pt", "F")
         self.out.branch("h2_4b2t_eta", "F")
@@ -452,6 +460,14 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("h2_4b2t_mass", "F")
         self.out.branch("h2_4b2t_match", "I")
         self.out.branch("h2_4b2t_dRjets", "F")
+        self.out.branch("h2_4b2t_FJ1idx", "I")
+        self.out.branch("h2_4b2t_FJ2idx", "I")
+        self.out.branch("h2_4b2t_J1idx", "I")
+        self.out.branch("h2_4b2t_J2idx", "I")
+        self.out.branch("h2_4b2t_T1idx", "I")
+        self.out.branch("h2_4b2t_T2idx", "I")
+        self.out.branch("h2_4b2t_L1idx", "I")
+        self.out.branch("h2_4b2t_L2idx", "I")
 
         self.out.branch("h3_4b2t_pt", "F")
         self.out.branch("h3_4b2t_eta", "F")
@@ -459,6 +475,14 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("h3_4b2t_mass", "F")
         self.out.branch("h3_4b2t_match", "I")
         self.out.branch("h3_4b2t_dRjets", "F")
+        self.out.branch("h3_4b2t_FJ1idx", "I")
+        self.out.branch("h3_4b2t_FJ2idx", "I")
+        self.out.branch("h3_4b2t_J1idx", "I")
+        self.out.branch("h3_4b2t_J2idx", "I")
+        self.out.branch("h3_4b2t_T1idx", "I")
+        self.out.branch("h3_4b2t_T2idx", "I")
+        self.out.branch("h3_4b2t_L1idx", "I")
+        self.out.branch("h3_4b2t_L2idx", "I")
 
         self.out.branch("h_fit_mass_4b2t", "F")
 
@@ -930,8 +954,8 @@ class hhh6bProducerPNetAK4(Module):
         looseMuons = [l for l in event.looseLeptons if abs(l.Id)==13]
         looseElectrons = [l for l in event.looseLeptons if abs(l.Id)==11]
         for j in event.ak4jets:
-            j.hasMuon = True if (closest(j, looseMuons)[1] < 1.0) else False
-            j.hasElectron = True if (closest(j, looseElectrons)[1] < 1.0) else False
+            j.hasMuon = True if (closest(j, looseMuons)[1] < 0.5) else False
+            j.hasElectron = True if (closest(j, looseElectrons)[1] < 0.5) else False
         for j in event.fatjets:
             j.hasMuon = True if (closest(j, looseMuons)[1] < 1.0) else False
             j.hasElectron = True if (closest(j, looseElectrons)[1] < 1.0) else False
@@ -1482,6 +1506,14 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("h1_4b2t_phi", h1.phi)
             self.out.fillBranch("h1_4b2t_match", h1.matchH)
             self.out.fillBranch("h1_4b2t_dRjets", h1.dRjets)
+            self.out.fillBranch("h1_4b2t_FJ1idx", h1.FJ1idx)
+            self.out.fillBranch("h1_4b2t_FJ2idx", h1.FJ2idx)
+            self.out.fillBranch("h1_4b2t_J1idx", h1.J1idx)
+            self.out.fillBranch("h1_4b2t_J2idx", h1.J2idx)
+            self.out.fillBranch("h1_4b2t_T1idx", h1.T1idx)
+            self.out.fillBranch("h1_4b2t_T2idx", h1.T2idx)
+            self.out.fillBranch("h1_4b2t_L1idx", h1.L1idx)
+            self.out.fillBranch("h1_4b2t_L2idx", h1.L2idx)
 
             self.out.fillBranch("h2_4b2t_mass", h2.Mass)
             self.out.fillBranch("h2_4b2t_pt", h2.pt)
@@ -1489,6 +1521,14 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("h2_4b2t_phi", h2.phi)
             self.out.fillBranch("h2_4b2t_match", h2.matchH)
             self.out.fillBranch("h2_4b2t_dRjets", h2.dRjets)
+            self.out.fillBranch("h2_4b2t_FJ1idx", h1.FJ1idx)
+            self.out.fillBranch("h2_4b2t_FJ2idx", h1.FJ2idx)
+            self.out.fillBranch("h2_4b2t_J1idx", h1.J1idx)
+            self.out.fillBranch("h2_4b2t_J2idx", h1.J2idx)
+            self.out.fillBranch("h2_4b2t_T1idx", h1.T1idx)
+            self.out.fillBranch("h2_4b2t_T2idx", h1.T2idx)
+            self.out.fillBranch("h2_4b2t_L1idx", h1.L1idx)
+            self.out.fillBranch("h2_4b2t_L2idx", h1.L2idx)
 
             self.out.fillBranch("h3_4b2t_mass", h3.Mass)
             self.out.fillBranch("h3_4b2t_pt", h3.pt)
@@ -1496,6 +1536,14 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("h3_4b2t_phi", h3.phi)
             self.out.fillBranch("h3_4b2t_match", h3.matchH)
             self.out.fillBranch("h3_4b2t_dRjets", h3.dRjets)
+            self.out.fillBranch("h3_4b2t_FJ1idx", h1.FJ1idx)
+            self.out.fillBranch("h3_4b2t_FJ2idx", h1.FJ2idx)
+            self.out.fillBranch("h3_4b2t_J1idx", h1.J1idx)
+            self.out.fillBranch("h3_4b2t_J2idx", h1.J2idx)
+            self.out.fillBranch("h3_4b2t_T1idx", h1.T1idx)
+            self.out.fillBranch("h3_4b2t_T2idx", h1.T2idx)
+            self.out.fillBranch("h3_4b2t_L1idx", h1.L1idx)
+            self.out.fillBranch("h3_4b2t_L2idx", h1.L2idx)
 
             self.out.fillBranch("max_h_eta_4b2t", max(abs(h1.eta), abs(h2.eta), abs(h3.eta)))
             self.out.fillBranch("min_h_eta_4b2t", min(abs(h1.eta), abs(h2.eta), abs(h3.eta)))
@@ -2542,6 +2590,7 @@ class hhh6bProducerPNetAK4(Module):
         elif self._opts['option'] == "4":
             #if (self.nSmallJets > 5 and self.nBTaggedJets > 2): passSel = True
             if (self.nSmallJets > -1): passSel = True
+            #if len(event.ak4jets)==0 and len(probe_jets)==0 len(event.looseTaus)==0 and len(event.looseLeptons)==0: passSel = False
 
         if not passSel: return False
 
@@ -2580,7 +2629,7 @@ class hhh6bProducerPNetAK4(Module):
                             matched += 1
                             matchedthishiggs.append(j)
                             matchedthisdau.append(dau)
-                # Get the invariant mass of gen-matched objects, fot both Hbb and Htautau
+                # Get the invariant mass of gen-matched objects, for both Hbb and Htautau
                 if len(matchedthishiggs)==2 and matchedthisdau[0]!=matchedthisdau[1] and deltaR(matchedthishiggs[0],matchedthishiggs[1])>0.5:
                     combgen = polarP4(matchedthishiggs[0])+polarP4(matchedthishiggs[1])
                     dau1pdgid = daughters[-2].pdgId
