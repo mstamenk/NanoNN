@@ -1,11 +1,14 @@
 import os
 import itertools
+from xml.sax.saxutils import prepare_input_source
 import ROOT
 import random
 ROOT.PyConfig.IgnoreCommandLineOptions = True
 import numpy as np
 from collections import Counter
 from operator import itemgetter
+
+import correctionlib
 
 import onnxruntime
 
@@ -19,6 +22,7 @@ from PhysicsTools.NanoNN.helpers.utils import closest, sumP4, polarP4, configLog
 from PhysicsTools.NanoNN.helpers.nnHelper import convert_prob, ensemble
 from PhysicsTools.NanoNN.helpers.massFitter import fitMass
 from PhysicsTools.NanoNN.helpers.higgsPairingAlgorithm_v2 import higgsPairingAlgorithm_v2
+
 
 import logging
 logger = logging.getLogger('nano')
@@ -104,12 +108,32 @@ class triggerEfficiency():
                                       thist.GetYaxis().FindFixBin(tpt))
         return trigEff
         
+
+# Flavour tagging PNet calibrations from Huilin and ttHcc analysis
+
+class FlavTagSFProducer():
+    def __init__(self, year, ftag_tag_dict):
+        era = {'2016APV': '2016preVFP_UL', '2016': '2016postVFP_UL', '2017': '2017_UL', '2018': '2018_UL','2022': '2018_UL','2022EE':'2018_UL','2023':'2018_UL'}[year]
+        correction_file = os.path.expandvars(
+            f'$CMSSW_BASE/src/PhysicsTools/NanoAODTools/data/flavTagSF/flavTaggingSF_{era}.json.gz')
+        self.corr = correctionlib.CorrectionSet.from_file(correction_file)['particleNetAK4_shape']
+        self.ftag_tag_dict = ftag_tag_dict
+    def get_sf(self, j, syst='central'):
+        return self.corr.evaluate(syst, j.hadronFlavour, self.ftag_tag_dict[j.tag], abs(j.eta), j.pt)
+
+
 class hhh6bProducerPNetAK4(Module):
     
     def __init__(self, year, **kwargs):
         print(year)
         self.year = year
         self.Run = 2 if year in ["2016APV", "2016", "2017", "2018"] else 3
+
+        if self.Run == 2: 
+            self._jet_algo = 'AK4PFchs'
+        else:
+            self._jet_algo = 'AK4PFPuppi'
+
 
         self.jetType = 'ak8'
         self._jetConeSize = 0.8
@@ -118,9 +142,24 @@ class hhh6bProducerPNetAK4(Module):
         self._fj_gen_name = 'GenJetAK8'
         self._sj_gen_name = 'SubGenJetAK8'
         self._jmeSysts = {'jec': False, 'jes': None, 'jes_source': '', 'jes_uncertainty_file_prefix': '',
-                          'jer': None, 'met_unclustered': None, 'smearMET': False, 'applyHEMUnc': False}
+                          'jer': None, 'met_unclustered': None, 'smearMET': False, 'applyHEMUnc': False, 'jmr': None}
+        
+        if self.Run == 3: # Before reading the config
+            self._jmeSysts['jec'] = True
+            self._jmeSysts['jes'] = 'nominal'
+            self._jmeSysts['jer'] = 'nominal'
+            self._jmeSysts['jmr'] = 'nominal'
+            self._jmeSysts['smearMET'] = True
+            self._jmeSysts['applyHEMUnc'] = True
+        
         self._opts = {'run_mass_regression': False, 'mass_regression_versions': ['ak8V01a', 'ak8V01b', 'ak8V01c'],
                       'WRITE_CACHE_FILE': False, 'option': "1", 'allJME': False}
+
+        if self.Run == 3:
+            self._opts['allJME'] = True # Before reading the config
+        
+        self._opts['allJME'] = True
+
         for k in kwargs:
             if k in self._jmeSysts:
                 self._jmeSysts[k] = kwargs[k]
@@ -129,6 +168,7 @@ class hhh6bProducerPNetAK4(Module):
         self._needsJMECorr = any([self._jmeSysts['jec'],
                                   self._jmeSysts['jes'],
                                   self._jmeSysts['jer'],
+                                  self._jmeSysts['jmr'],
                                   self._jmeSysts['met_unclustered'],
                                   self._jmeSysts['applyHEMUnc']])
         self._allJME = self._opts['allJME']
@@ -193,7 +233,7 @@ class hhh6bProducerPNetAK4(Module):
                               "2022EE" : [1.0, 1.0, 1.0]}[self.year]
 
         if self._needsJMECorr:
-            self.jetmetCorr = JetMETCorrector(year=self.year, jetType="AK4PFchs", **self._jmeSysts)
+            self.jetmetCorr = JetMETCorrector(year=self.year, jetType=self._jet_algo, **self._jmeSysts)
             self.fatjetCorr = JetMETCorrector(year=self.year, jetType="AK8PFPuppi", **self._jmeSysts)
             self.subjetCorr = JetMETCorrector(year=self.year, jetType="AK4PFPuppi", **self._jmeSysts)
             self._allJME = False
@@ -201,42 +241,45 @@ class hhh6bProducerPNetAK4(Module):
         if self._allJME:
             # self.applyHEMUnc = False
             self.applyHEMUnc = self._jmeSysts['applyHEMUnc']
-            year_pf = "_%i"%self.year
+            year_pf = "_%s"%self.year
             self.jetmetCorrectors = {
-                'nominal': JetMETCorrector(year=self.year, jetType="AK4PFchs", jer='nominal', applyHEMUnc=self.applyHEMUnc),
-                'JERUp': JetMETCorrector(year=self.year, jetType="AK4PFchs", jer='up'),
-                'JERDown': JetMETCorrector(year=self.year, jetType="AK4PFchs", jer='down'),
-                'JESUp': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes='up'),
-                'JESDown': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes='down'),
+                'nominal': JetMETCorrector(year=self.year, jetType=self._jet_algo, jer='nominal', applyHEMUnc=self.applyHEMUnc),
+                'JERUp': JetMETCorrector(year=self.year, jetType=self._jet_algo, jer='up'),
+                'JERDown': JetMETCorrector(year=self.year, jetType=self._jet_algo, jer='down'),
+                'JMRUp': JetMETCorrector(year=self.year, jetType=self._jet_algo, jmr='up'),
+                'JMRDown': JetMETCorrector(year=self.year, jetType=self._jet_algo, jmr='down'),
+                'JESUp': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes='up'),
+                'JESDown': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes='down'),
+
                 
-                'JESUp_Abs': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='Absolute', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_Abs': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='Absolute', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_Abs'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='Absolute'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_Abs'+year_pf:JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='Absolute'+year_pf,jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_Abs': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='Absolute', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_Abs': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='Absolute', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_Abs'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='Absolute'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_Abs'+year_pf:JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='Absolute'+year_pf,jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
                 
-                'JESUp_BBEC1': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='BBEC1', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_BBEC1': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='BBEC1', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='BBEC1'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='BBEC1'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_BBEC1': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='BBEC1', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_BBEC1': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='BBEC1', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='BBEC1'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='BBEC1'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
                 
-                'JESUp_EC2': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='EC2', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_EC2': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='EC2', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_EC2'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='EC2'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_EC2'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='EC2'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_EC2': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='EC2', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_EC2': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='EC2', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_EC2'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='EC2'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_EC2'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='EC2'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_FlavQCD': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='FlavorQCD', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_FlavQCD': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='FlavorQCD', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_FlavQCD': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='FlavorQCD', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_FlavQCD': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='FlavorQCD', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_HF': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='HF', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_HF': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='HF', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_HF'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='HF'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_HF'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='HF'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_HF': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='HF', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_HF': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='HF', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_HF'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='HF'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_HF'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='HF'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_RelBal': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='RelativeBal', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_RelBal': JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='RelativeBal', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_RelBal': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='RelativeBal', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_RelBal': JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='RelativeBal', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='RelativeSample'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType="AK4PFchs", jes_source='RelativeSample'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='RelativeSample'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType=self._jet_algo, jes_source='RelativeSample'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
             }
             # hemunc for 2018 only
             self.fatjetCorrectors = {
@@ -244,37 +287,40 @@ class hhh6bProducerPNetAK4(Module):
                 #'HEMDown': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jer='nominal', applyHEMUnc=True),
                 'JERUp': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jer='up'),
                 'JERDown': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jer='down'),
+                'JMRUp': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jmr='up'),
+                'JMRDown': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jmr='down'),
                 'JESUp': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes='up'),
                 'JESDown': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes='down'),
+                
 
-                'JESUp_Abs': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_Abs': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_Abs'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_Abs'+year_pf:JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute'+year_pf,jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_Abs': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_Abs': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_Abs'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_Abs'+year_pf:JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='Absolute'+year_pf,jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_BBEC1': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_BBEC1': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_BBEC1': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_BBEC1': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_BBEC1'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='BBEC1'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_EC2': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_EC2': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_EC2'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_EC2'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_EC2': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_EC2': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_EC2'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_EC2'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='EC2'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_FlavQCD': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='FlavorQCD', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_FlavQCD': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='FlavorQCD', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_FlavQCD': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='FlavorQCD', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_FlavQCD': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='FlavorQCD', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_HF': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_HF': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESUp_HF'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_HF'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_HF': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_HF': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_HF'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_HF'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='HF'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_RelBal': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeBal', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_RelBal': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeBal', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_RelBal': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeBal', jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_RelBal': JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeBal', jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
 
-                'JESUp_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeSample'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
-                'JESDown_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeSample'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESUp_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeSample'+year_pf, jes='up', jes_uncertainty_file_prefix="RegroupedV2_"),
+                #'JESDown_RelSample'+year_pf: JetMETCorrector(year=self.year, jetType="AK8PFPuppi", jes_source='RelativeSample'+year_pf, jes='down', jes_uncertainty_file_prefix="RegroupedV2_"),
             }
             self._jmeLabels = self.fatjetCorrectors.keys()
         else:
@@ -299,6 +345,78 @@ class hhh6bProducerPNetAK4(Module):
           except RuntimeError:
             ROOT.gROOT.LoadMacro(macropath + fname+".cc" + " ++g")
         self.kUndefinedDecayType, self.kTauToHadDecay,  self.kTauToElecDecay, self.kTauToMuDecay = 0, 1, 2, 3  
+
+
+        #spanet inference 
+        prefix_tools = os.path.expandvars('$CMSSW_BASE/src/PhysicsTools/NanoAODTools/data')
+        #sess_options = onnxruntime.SessionOptions()
+        #sess_options.execution_mode = onnxruntime.ExecutionMode.ORT_PARALLEL
+
+        #classification_path =  "spanet/spanet_pnet_all_vars_v0_no_log.onnx"
+        #if 'no_log' in classification_path:
+        #    self.SpanetONNXNeedLogTransform = True
+        #    print("Using %s"%classification_path)
+        #    print("Need to transform inputs with log(x + 1) before inference")
+
+        #categorisation_path = "spanet/spanet_categorisation_v6_no_log.onnx"
+
+        #if 'no_log' in classification_path and 'no_log' not in categorisation_path:
+        #    print("Error: categorisation and classificaton inference requires both the same inputs")
+        #    exit()
+
+
+        #self.session_classification = onnxruntime.InferenceSession(prefix_tools + '/' + classification_path,sess_options) # HHH vs HH vs QCD vs ...
+        #self.session_categorisation = onnxruntime.InferenceSession(prefix_tools + '/' + categorisation_path,sess_options) # 3bh0h, 2bh1h, ...
+        
+        
+        #self.output_nodes_classification = [node.name for node in self.session_classification.get_outputs()]
+        #self.output_nodes_categorisation = [node.name for node in self.session_categorisation.get_outputs()]
+
+        # FTAG calibrations from Huilin 
+        self.ftag_tag_dict = {
+            0: 'L0',
+            40: 'C0', 41: 'C1', 42: 'C2', 43: 'C3', 44: 'C4',
+            50: 'B0', 51: 'B1', 52: 'B2', 53: 'B3', 54: 'B4',
+        }
+        self.ftag_mapping = {
+            0: 0,
+            40: 1, 41: 2, 42: 3, 43: 4, 44: 5,
+            50: 6, 51: 7, 52: 8, 53: 9, 54: 10,
+        }
+
+        # FIXME: systematics list
+        self.ftag_systematics = [
+            'Stat',
+            'LHEScaleWeight_muF_ttbar',
+            'LHEScaleWeight_muF_wjets',
+            'LHEScaleWeight_muF_zjets',
+            'LHEScaleWeight_muR_ttbar',
+            'LHEScaleWeight_muR_wjets',
+            'LHEScaleWeight_muR_zjets',
+            'PSWeightISR',
+            'PSWeightFSR',
+            'XSec_WJets_c',
+            'XSec_WJets_b',
+            'XSec_ZJets_c',
+            'XSec_ZJets_b',
+            # 'JER',
+            # 'JES',
+            'PUWeight',
+            'PUJetID'
+        ]
+
+        self.ftagSF = FlavTagSFProducer(self.year, self.ftag_tag_dict)
+
+        # AK8 PNet calibrations in a pseudo-continuous way, taken from HIG-23-011
+        self.fatjet_flavtag_sf = [0.98,1.3,0.87] # SF_tight, SF_medium, SF_fail (unc 0.13,0.19,0.22) to be varied correlated
+        self.fatjet_flavtag_sf_up = [0.98+0.13,1.3+0.19,0.87-0.22] # UP UP DOWN
+        self.fatjet_flavtag_sf_down = [0.98-0.13,1.3-0.19,0.87+0.22] # DOWN DOWN UP
+
+        self.fatjet_flavtag_wps = {'2016APV' : [0.9883,0.9737], 
+                                   '2016'    : [0.9883, 0.9735], 
+                                   '2017'    : [0.9870, 0.9714],
+                                   '2018'    : [0.9880, 0.9734],
+        } # tight, medium, and below is fail 
 
     def beginJob(self):
         if self._needsJMECorr:
@@ -338,7 +456,9 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("met", "F")
         self.out.branch("rho", "F")
         self.out.branch("metphi", "F")
-        #self.out.branch("npvs", "F")
+        self.out.branch("npvs", "F")
+        self.out.branch("npvsGood", "F")
+
         self.out.branch("ht", "F")
         self.out.branch("passmetfilters", "O")
         self.out.branch("l1PreFiringWeight", "F")
@@ -368,6 +488,7 @@ class hhh6bProducerPNetAK4(Module):
             self.out.branch(prefix + "MassSD_noJMS", "F")
             self.out.branch(prefix + "MassSD_UnCorrected", "F")
             self.out.branch(prefix + "PNetXbb", "F")
+            self.out.branch(prefix + "PNetXbbTagCat", "I")
             self.out.branch(prefix + "PNetXjj", "F")
             if self.Run!=2:
                 self.out.branch(prefix + "PNetXtautau", "F")
@@ -463,6 +584,27 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("reco4b2t_TauIsBoosted", "I")
         self.out.branch("reco4b2t_TauIsResolved", "I")
 
+        # SPANET variables
+        self.out.branch("probHHH","F")
+        self.out.branch("probQCD","F")
+        self.out.branch("probTT", "F")
+        self.out.branch("probVJets","F")
+        self.out.branch("probVV","F")
+        self.out.branch("probHHH4b2tau","F")
+        self.out.branch("probHH4b","F")
+        self.out.branch("probHH2b2tau","F")
+
+        self.out.branch("prob3bh0h", "F")
+        self.out.branch("prob2bh1h", "F")
+        self.out.branch("prob1bh2h", "F")
+        self.out.branch("prob0bh3h", "F")
+        self.out.branch("prob2bh0h", "F")
+        self.out.branch("prob1bh1h", "F")
+        self.out.branch("prob0bh2h", "F")
+        self.out.branch("prob1bh0h", "F")
+        self.out.branch("prob0bh1h", "F")
+        self.out.branch("prob0bh0h", "F")
+
         # max min
         self.out.branch("max_h_eta", "F")
         self.out.branch("min_h_eta", "F")
@@ -489,6 +631,15 @@ class hhh6bProducerPNetAK4(Module):
             self.out.branch(prefix + "Phi", "F")
             self.out.branch(prefix + "DeepFlavB", "F")
             self.out.branch(prefix + "PNetB", "F")
+            if self.Run == 2:
+                self.out.branch(prefix + "PNetC", "F")
+                self.out.branch(prefix + "PNetBPlusC", "F")
+                self.out.branch(prefix + "PNetBVsC", "F")
+                self.out.branch(prefix + "PNetTagCat","I")
+            else:
+                self.out.branch(prefix + "PNetCvB", "F")
+                self.out.branch(prefix + "PNetCvL", "F")
+
             self.out.branch(prefix + "Mass", "F")
             self.out.branch(prefix + "RawFactor", "F")
             self.out.branch(prefix + "MatchedGenPt", "F")
@@ -509,6 +660,10 @@ class hhh6bProducerPNetAK4(Module):
                 self.out.branch(prefix + "HiggsMatchedIndex", "I")
                 self.out.branch(prefix + "FatJetMatched", "O")
                 self.out.branch(prefix + "FatJetMatchedIndex", "I")
+                self.out.branch(prefix + "Charge", "I")
+                self.out.branch(prefix + "PdgId", "I")
+                self.out.branch(prefix + "DRGenQuark", "F")
+
 
         # leptons
         for idx in ([1, 2]):
@@ -551,6 +706,21 @@ class hhh6bProducerPNetAK4(Module):
             self.out.branch(prefix + "Phi", "F")
             self.out.branch(prefix + "Decay", "I")
 
+        # Flavour tagging up and down variations
+        self.ftagbasewgts = {'flavTagWeight': 1}
+        self.fj_ftagbasewgts = {'fatJetFlavTagWeight': 1, 'fatJetFlavTagWeight_UP': 1, 'fatJetFlavTagWeight_DOWN': 1,}
+
+        if self.isMC:
+            for syst in self.ftag_systematics:
+                self.ftagbasewgts[f'flavTagWeight_{syst}_UP'] = 1
+                self.ftagbasewgts[f'flavTagWeight_{syst}_DOWN'] = 1
+            for name in self.ftagbasewgts.keys():
+                self.out.branch(name, "F")
+
+            for name in self.fj_ftagbasewgts.keys():
+                self.out.branch(name, "F")
+                
+
     def endFile(self, inputFile, outputFile, inputTree, wrappedOutputTree):
         if self._opts['run_mass_regression'] and self._opts['WRITE_CACHE_FILE']:
             for p in self.pnMassRegressions:
@@ -567,7 +737,7 @@ class hhh6bProducerPNetAK4(Module):
             outputFile.cd()
             cwd.cd()
                     
-    def loadGenHistory(self, event, fatjets):
+    def loadGenHistory(self, event, fatjets, ak4jets):
         # gen matching
         if not self.isMC:
             return
@@ -619,10 +789,13 @@ class hhh6bProducerPNetAK4(Module):
         tauGenWs = []
         tauGenZs = []
         tauGenHs = []
+        quarksGen = []
         
         for gp in genparts:
             if gp.statusFlags & (1 << 13) == 0:
                 continue
+            print(gp.pdgId)
+
             if abs(gp.pdgId) == 6:
                 for idx in gp.dauIdx:
                     dau = genparts[idx]
@@ -652,6 +825,8 @@ class hhh6bProducerPNetAK4(Module):
                     hadGenHs.append(gp)
                 elif isTau(gp):
                     tauGenHs.append(gp)
+            elif abs(gp.pdgId) == 5 or abs(gp.pdgId) == 4 or abs(gp.pdgId) == 3 or abs(gp.pdgId) == 2 or abs(gp.pdgId) == 1 or abs(gp.pdgId) == 0:
+                quarksGen.append(gp)
                          
         for parton in itertools.chain(lepGenTops, hadGenTops, tauGenTops):
             parton.daus = (parton.genB, genparts[parton.genW.dauIdx[0]], genparts[parton.genW.dauIdx[1]])
@@ -668,6 +843,23 @@ class hhh6bProducerPNetAK4(Module):
 
         hadGenHs.sort(key=lambda x: x.pt, reverse = True)
         tauGenHs.sort(key=lambda x: x.pt, reverse = True)
+        quarksGen.sort(key = lambda x: x.pdgId, reverse = True)
+
+        #for q in quarksGen:
+            #print(q.pdgId)
+
+        for jet in ak4jets:
+            if len(quarksGen) > 0:
+                jet.genQuark, jet.dr_genQuark, jet.genQuarkIdx  = closest(jet,quarksGen)
+                #print(jet.genQuark.pdgId, jet.dr_genQuark, jet.genQuarkIdx)
+            else:
+                jet.genQuark = 0
+                jet.pdgId = 0
+                jet.dr_genQuark = -999.
+                jet.genQuarkIdx = 0
+
+        #print()
+
         return hadGenHs+tauGenHs
                
     def selectLeptons(self, event):
@@ -727,6 +919,8 @@ class hhh6bProducerPNetAK4(Module):
         # correct Jets and MET
         event.idx = event._entry if event._tree._entrylist==ROOT.MakeNullPointer(ROOT.TEntryList) else event._tree._entrylist.GetEntry(event._entry)
         event._allJets = Collection(event, "Jet")
+        if self.Run == 3:
+            event.rho = Object(event,'Rho')
         #event.met = METObject(event, "METFixEE2017") if self.year == 2017 else METObject(event, "MET")
         event.met = METObject(event, "MET")
         event._allFatJets = Collection(event, self._fj_name)
@@ -734,7 +928,10 @@ class hhh6bProducerPNetAK4(Module):
         
         # JetMET corrections
         if self._needsJMECorr:
-            rho = event.fixedGridRhoFastjetAll
+            if self.Run == 2:
+                rho = event.fixedGridRhoFastjetAll
+            else:
+                rho = event.rho.fixedGridRhoFastjetAll
             self.jetmetCorr.setSeed(rndSeed(event, event._allJets))
             self.jetmetCorr.correctJetAndMET(jets=event._allJets, lowPtJets=Collection(event, "CorrT1METJet"),
                                              met=event.met, rawMET=METObject(event, "RawMET"),
@@ -821,6 +1018,31 @@ class hhh6bProducerPNetAK4(Module):
                                           isMC=self.isMC, runNumber=event.run)
                     event._AllJets[key] = sorted(event._AllJets[key], key=lambda x: x.pt, reverse=True)
 
+        if self._jmeSysts['jes']:
+            if "up" in self._jmeSysts['jes']:
+                event._allFatJets = event._FatJets['JESUp']
+                event._allJets = event._AllJets['JESUp']
+            elif "down" in self._jmeSysts['jes']:
+                event._allFatJets = event._FatJets['JESDown']
+                event._allJets = event._AllJets['JESDown']
+
+        if self._jmeSysts['jer']:
+            if "up" in self._jmeSysts['jer']:
+                event._allFatJets = event._FatJets['JERUp']
+                event._allJets = event._AllJets['JERUp']
+            elif "down" in self._jmeSysts['jer']:
+                event._allFatJets = event._FatJets['JERDown']
+                event._allJets = event._AllJets['JERDown']
+        
+        if self._jmeSysts['jmr']:
+            if "up" in self._jmeSysts['jmr']:
+                event._allFatJets = event._FatJets['JMRUp']
+                event._allJets = event._AllJets['JMRDown']
+            elif "down" in self._jmeSysts['jmr']:
+                event._allFatJets = event._FatJets['JMRDown']
+                event._allJets = event._AllJets['JMRDown']
+
+
         # link fatjet to subjets 
         for idx, fj in enumerate(event._allFatJets):
             fj.idx = idx
@@ -890,7 +1112,35 @@ class hhh6bProducerPNetAK4(Module):
         
         # select jets
         event.fatjets = [fj for fj in event._xbbFatJets if fj.pt > 200 and abs(fj.eta) < 2.5 and (fj.jetId & 2)]
+
+        # Apply calibrations for AK8 PNet score
+        if self.Run == 2:
+            for fj in event.fatjets:
+                if fj.Xbb > self.fatjet_flavtag_wps[self.year][0]:  # Tight working point
+                    fj.tag = 2 # Tight working point
+                    if self.isMC:
+                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= self.fatjet_flavtag_sf[0]
+                        self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[0]
+                        self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[0]
+                elif fj.Xbb < self.fatjet_flavtag_wps[self.year][0] and fj.Xbb > self.fatjet_flavtag_wps[self.year][1]: # Medium working point
+                    fj.tag = 1
+                    if self.isMC:
+                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= self.fatjet_flavtag_sf[1]
+                        self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[1]
+                        self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[1]
+                elif fj.Xbb < self.fatjet_flavtag_wps[self.year][1] : # Inefficiency scale factor
+                    fj.tag = 0
+                    if self.isMC:
+                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= self.fatjet_flavtag_sf[2]
+                        self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[2]
+                        self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[2]
+
+
         #event.ak4jets = [j for j in event._allJets if j.pt > 20 and abs(j.eta) < 2.5 and (j.jetId & 2)]
+
+        # FatJet calibrations
+        
+
 
         if self.Run==2:
             puid = 3 if '2016' in self.year  else 6
@@ -929,8 +1179,42 @@ class hhh6bProducerPNetAK4(Module):
                 pNetSum = j.ParticleNetAK4_probb + j.ParticleNetAK4_probbb + j.ParticleNetAK4_probc + j.ParticleNetAK4_probcc + j.ParticleNetAK4_probg + j.ParticleNetAK4_probuds
                 if pNetSum > 0:
                     j.btagPNetB = (j.ParticleNetAK4_probb + j.ParticleNetAK4_probbb) / pNetSum
+                    j.btagPNetC = (j.ParticleNetAK4_probc + j.ParticleNetAK4_probcc) / (j.ParticleNetAK4_probb + j.ParticleNetAK4_probbb + j.ParticleNetAK4_probc + j.ParticleNetAK4_probcc + j.ParticleNetAK4_probg + j.ParticleNetAK4_probuds)
+                    j.btagPNetBPlusC = j.btagPNetB + j.btagPNetC
+                    j.btagPNetBVsC = j.btagPNetB / j.btagPNetBPlusC
+
+                    # Calibrations + uncertainties (working points hardcoded)
+                    #if self.isMC:
+                    if '2017' in self.year or '2018' in self.year:
+                        wps_pnet_b_plus_c = [0.5, 0.2, 0.1]
+                        wps_pnet_b_vs_c = [0.99,0.96, 0.88, 0.7,0.4,0.15,0.05]
+                    elif '2016' in self.year:
+                        wps_pnet_b_plus_c = [0.35, 0.17, 0.1]
+                        wps_pnet_b_vs_c = [0.99,0.96, 0.88, 0.7, 0.4, 0.15, 0.05]
+
+                    # pseudo-continuous tagging in b+c and b vs c define tag
+                    # need to define SF after the jet pt cuts
+                    if j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC > wps_pnet_b_vs_c[0]: j.tag = 54
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[0] and j.btagPNetBVsC > wps_pnet_b_vs_c[1]: j.tag = 53
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[1] and j.btagPNetBVsC > wps_pnet_b_vs_c[2]: j.tag = 52
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[2] and j.btagPNetBVsC > wps_pnet_b_vs_c[3]: j.tag = 51
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[3] and j.btagPNetBVsC > wps_pnet_b_vs_c[4]: j.tag = 50
+
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[6]: j.tag = 44
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[5] and j.btagPNetBVsC > wps_pnet_b_vs_c[6]: j.tag = 43
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[0] and j.btagPNetBVsC < wps_pnet_b_vs_c[4] and j.btagPNetBVsC > wps_pnet_b_vs_c[5]: j.tag = 42
+
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[1] and j.btagPNetBPlusC < wps_pnet_b_plus_c[0] : j.tag = 41
+                    elif j.btagPNetBPlusC > wps_pnet_b_plus_c[2] and j.btagPNetBPlusC < wps_pnet_b_plus_c[1] : j.tag = 40
+                    elif j.btagPNetBPlusC < wps_pnet_b_plus_c[2]: j.tag = 0
+
                 else:
                     j.btagPNetB = -1
+                    j.btagPNetC = -1
+                    j.btagPNetBPlusC = -1
+                    j.btagPNetBVsC = -1
+                    j.tag = 0
+            
             else:
                 pass
                 # "btagPNetB" already defined with that exact branch name in NanoAODv12
@@ -962,6 +1246,19 @@ class hhh6bProducerPNetAK4(Module):
         #event.alljets.sort(key=lambda x : x.pt, reverse = True)
         #event.ak4jets.sort(key=lambda x : x.btagDeepFlavB, reverse = True)
         event.ak4jets.sort(key=lambda x : x.btagPNetB, reverse = True)
+
+        # Apply FTAG calibrations
+        if self.Run ==2:
+
+            if self.isMC: 
+                for j in event.ak4jets:
+                    #print("Jet properties",j.btagPNetBPlusC, j.btagPNetBVsC, j.pt, abs(j.eta))
+                    self.ftagwgts['flavTagWeight'] *= self.ftagSF.get_sf(j)
+
+                    for syst in self.ftag_systematics:
+                        self.ftagwgts[f'flavTagWeight_{syst}_UP'] *= self.ftagSF.get_sf(j, 'up_' + syst)
+                        self.ftagwgts[f'flavTagWeight_{syst}_DOWN'] *= self.ftagSF.get_sf(j, 'down_' + syst)
+
 
         self.nBTaggedJets = int(len(event.bmjets))
         #self.nBTaggedJets = int(len(event.bljets))
@@ -1024,7 +1321,11 @@ class hhh6bProducerPNetAK4(Module):
         self.out.fillBranch("met", event.met.pt)
         self.out.fillBranch("metphi", event.met.phi)
         self.out.fillBranch("weight", event.gweight)
-        #self.out.fillBranch("npvs", event.PV.npvs)
+
+        pv = Object(event,"PV")
+        self.out.fillBranch("npvs", pv.npvs)
+        self.out.fillBranch("npvsGood", pv.npvsGood)
+
 
         # qcd weights
         """
@@ -1206,6 +1507,8 @@ class hhh6bProducerPNetAK4(Module):
                     fill_fj(prefix + "Mass", fj.mass)
             fill_fj(prefix + "MassSD_UnCorrected", fj.msoftdrop)
             fill_fj(prefix + "PNetXbb", fj.Xbb)
+            fill_fj(prefix + "PNetXbbTagCat", fj.tag)
+
             fill_fj(prefix + "PNetXjj", fj.Xjj)
             if self.Run==2:
                 fill_fj(prefix + "PNetQCD", fj.particleNetMD_QCD)
@@ -1342,6 +1645,14 @@ class hhh6bProducerPNetAK4(Module):
             fillBranch(prefix + "Phi", j.phi)
             fillBranch(prefix + "DeepFlavB", j.btagDeepFlavB)
             fillBranch(prefix + "PNetB", j.btagPNetB)
+            if self.Run == 2:
+                fillBranch(prefix + "PNetC", j.btagPNetC)
+                fillBranch(prefix + "PNetBPlusC", j.btagPNetBPlusC)
+                fillBranch(prefix + "PNetBVsC", j.btagPNetBVsC)
+                #fillBranch(prefix + "PNetTagCat", self.ftag_mapping[j.tag])
+            else:
+                fillBranch(prefix + "PNetCvB", j.btagPNetCvB)
+                fillBranch(prefix + "PNetCvL", j.btagPNetCvL)
             fillBranch(prefix + "JetId", j.jetId)
             fillBranch(prefix + "Mass", j.mass)
             fillBranch(prefix + "RawFactor", j.rawFactor)
@@ -1357,6 +1668,9 @@ class hhh6bProducerPNetAK4(Module):
             if self.isMC:
                 fillBranch(prefix + "HadronFlavour", j.hadronFlavour)
                 fillBranch(prefix + "HiggsMatched", j.HiggsMatch)
+                fillBranch(prefix + "Charge", j.Charge)
+                fillBranch(prefix + "PdgId", j.pdgId)
+                fillBranch(prefix + "DRGenQuark", j.drGen)
                 fillBranch(prefix + "HiggsMatchedIndex", j.HiggsMatchIndex)
                 fillBranch(prefix + "FatJetMatched", j.FatJetMatch)
                 fillBranch(prefix + "FatJetMatchedIndex", j.FatJetMatchIndex)
@@ -1381,7 +1695,7 @@ class hhh6bProducerPNetAK4(Module):
         event.reco4b2t_TauIsResolved = 0
 
         #if len(jets)+2*len(fatjets) > 5:
-        if True:
+        if False:
             # Technique 3: mass fitter
             
             #m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm(event,jets,fatjets,XbbWP)
@@ -1455,6 +1769,12 @@ class hhh6bProducerPNetAK4(Module):
         self.out.fillBranch("reco4b2t_TauIsBoosted", event.reco4b2t_TauIsBoosted)
         self.out.fillBranch("reco4b2t_TauIsResolved", event.reco4b2t_TauIsResolved)
 
+    def fillFTAGSF(self):
+
+        for name, val in self.ftagwgts.items():
+            self.out.fillBranch(name,val)
+        for name, val in self.fj_ftagwgts.items():
+            self.out.fillBranch(name,val)
             
     def fillLeptonInfo(self, event, leptons):
         for idx in ([1, 2]):
@@ -1492,880 +1812,6 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "FatJetMatchedIndex", lep.FatJetMatchIndex)
                 fillBranch(prefix + "MatchedGenPt", lep.MatchedGenPt)
 
-
-    '''
-    def higgsPairingAlgorithm(self, event, jets, fatjets, XbbWP, dotaus=False, taus=[], XtautauWP=0.0):
-        # save jets properties
-
-        dummyJet = polarP4()
-        dummyJet.HiggsMatch = False
-        dummyJet.HiggsMatchIndex = -1
-        dummyJet.FatJetMatch = False
-        dummyJet.btagDeepFlavB = -1
-        dummyJet.btagPNetB = -1
-        dummyJet.DeepTauVsJet = -1
-        dummyJet.hadronFlavour = -1
-        dummyJet.jetId = -1
-        dummyJet.puId = -1
-        dummyJet.rawFactor = -1
-        dummyJet.bRegCorr = -1
-        dummyJet.bRegRes = -1
-        dummyJet.cRegCorr = -1
-        dummyJet.cRegRes = -1
-        dummyJet.MatchedGenPt = 0
-        dummyJet.mass = 0.
-
-        dummyHiggs = polarP4()
-        dummyHiggs.matchH1 = False
-        dummyHiggs.matchH2 = False
-        dummyHiggs.matchH3 = False
-        dummyHiggs.mass = 0.
-        dummyHiggs.Mass = 0.
-        dummyHiggs.pt = -1
-        dummyHiggs.eta = -1
-        dummyHiggs.phi = -1
-        dummyHiggs.dRjets = 0.
-
-        probejets = [fj for fj in fatjets]
-        probetau = []
-        if dotaus:
-          probetau = sorted([fj for fj in fatjets and fj.Xtautau > XtautauWP], key=lambda x: x.Xtautau, reverse = True)
-          if len(probetau)>0:
-            probetau = probetau[0]
-
-        jets_4vec = []
-        for j in jets:
-            overlap = False
-            for fj in probejets:
-                if fj!=probetau and deltaR(j,fj) < 0.8: overlap = True
-            if overlap == False:
-                j_tmp = polarP4(j)
-                j_tmp.HiggsMatch = j.HiggsMatch
-                j_tmp.HiggsMatchIndex = j.HiggsMatchIndex
-                j_tmp.FatJetMatch = j.FatJetMatch
-                j_tmp.btagDeepFlavB = j.btagDeepFlavB
-                j_tmp.btagPNetB = j.btagPNetB
-                j_tmp.DeepTauVsJet = -1
-                if self.isMC:
-                    j_tmp.hadronFlavour = j.hadronFlavour
-                j_tmp.jetId = j.jetId
-                j_tmp.rawFactor = j.rawFactor
-                j_tmp.mass = j.mass
-                j_tmp.MatchedGenPt = j.MatchedGenPt
-                if self.Run==2:
-                    j_tmp.puId = j.puId
-                    j_tmp.bRegCorr = j.bRegCorr
-                    j_tmp.bRegRes = j.bRegRes
-                    j_tmp.cRegCorr = j.cRegCorr
-                    j_tmp.cRegRes = j.cRegRes
-
-                jets_4vec.append(j_tmp)
-
-        taus_4vec = []
-        for t in taus:
-            overlap = False
-            if probetau!=[]:
-                if deltaR(t,probetau) < 0.8: overlap = True
-            if overlap == False:
-                t_tmp = polarP4(t)
-                t_tmp.HiggsMatch = t.HiggsMatch
-                t_tmp.HiggsMatchIndex = t.HiggsMatchIndex
-                t_tmp.FatJetMatch = t.FatJetMatch
-                t_tmp.charge = t.charge
-                t_tmp.btagDeepFlavB = -1
-                t_tmp.btagPNetB = -1
-                if self.Run==2:
-                    t_tmp.DeepTauVsJet = t.rawDeepTau2017v2p1VSjet
-                else:
-                    t_tmp.DeepTauVsJet = t.rawDeepTau2018v2p5VSjet
-                if self.isMC:
-                    t_tmp.hadronFlavour = -1
-                t_tmp.jetId = -1
-                t_tmp.rawFactor = -1
-                t_tmp.mass = t.mass
-                t_tmp.MatchedGenPt = t.MatchedGenPt
-                if self.Run==2:
-                    t_tmp.puId = -1
-                    t_tmp.bRegCorr = -1
-                    t_tmp.bRegRes = -1
-                    t_tmp.cRegCorr = -1
-                    t_tmp.cRegRes = -1
-
-                taus_4vec.append(t_tmp)
-
-
-        if len(jets_4vec) > 5:
-            jets_4vec = jets_4vec[:6]
-
-        j0 = dummyJet
-        j1 = dummyJet
-        j2 = dummyJet
-        j3 = dummyJet
-        j4 = dummyJet
-        j5 = dummyJet
-
-        if self.isMC:
-            hadGenH_4vec = [polarP4(h) for h in self.hadGenHs]
-            genHdaughter_4vec = [polarP4(d) for d in self.genHdaughter]
-
-        # include boosted categories
-
-        # 3 AK8 jets
-        if len(probejets) > 2:
-            h1 = probejets[0]
-            h2 = probejets[1]
-            h3 = probejets[2]
-            if probetau!=[]:
-              h3 = probetau
-              event.reco4b2t_TauIsBoosted = 3
-              if h1==h3:
-                h1 = probejets[1]
-                h2 = probejets[2]
-              elif h2==h3:
-                h2 = probejets[2]
-
-            if self.Run==2:
-                m_fit = (h1.particleNet_mass + h2.particleNet_mass + h3.particleNet_mass) / 3.
-            else:
-                m_fit = (h1.mass*h1.particleNet_massCorr + h2.mass*h2.particleNet_massCorr + h3.mass*h3.particleNet_massCorr) / 3.
-            h1.matchH1 = h1.HiggsMatch
-            h2.matchH2 = h2.HiggsMatch
-            h3.matchH3 = h3.HiggsMatch
-            if self.Run==2:
-                h1.Mass = h1.particleNet_mass
-                h2.Mass = h2.particleNet_mass
-                h3.Mass = h3.particleNet_mass
-            else:
-                h1.Mass = h1.mass*h1.particleNet_massCorr
-                h2.Mass = h2.mass*h2.particleNet_massCorr
-                h3.Mass = h3.mass*h3.particleNet_massCorr
-
-            if len(jets_4vec) > 0:
-                j0 = jets_4vec[0]
-            if len(jets_4vec) > 1:
-                j1 = jets_4vec[1]
-            if len(jets_4vec) > 2:
-                j2 = jets_4vec[2]
-            if len(jets_4vec) > 3:
-                j3 = jets_4vec[3]
-            if len(jets_4vec) > 4:
-                j4 = jets_4vec[4]
-            if len(jets_4vec) > 5:
-                j5 = jets_4vec[5]
-
-            if not dotaus:
-                event.reco6b_3bh0h = True
-                event.reco6b_Idx = 1
-            else:
-                event.reco4b2t_3bh0h = True
-                event.reco4b2t_Idx = 1
-
-        # 2 AK8 jets
-        elif len(probejets) == 2:
-            h1 = probejets[0]
-            h2 = probejets[1]
-            if probetau!=[]:
-                h2 = probetau
-                event.reco4b2t_TauIsBoosted = 2
-                if h1==h2:
-                    h1 = probejets[1]
-
-            if self.Run==2:
-                h1.Mass = h1.particleNet_mass
-                h2.Mass = h2.particleNet_mass
-            else:
-                h1.Mass = h1.mass*h1.particleNet_massCorr
-                h2.Mass = h2.mass*h2.particleNet_massCorr
-            h1.matchH1 = h1.HiggsMatch
-            h2.matchH2 = h2.HiggsMatch
-
-            if (not dotaus) or probetau!=[]: # All 6b, or 4b2tau if boosted Tau already selected
-                permutations = list(itertools.permutations(jets_4vec))
-                permutations = [el[:6] for el in permutations]
-                permutations = list(set(permutations))
-                if len(permutations)<2:
-                    if not dotaus:
-                        event.reco6b_2bh0h = True
-                        event.reco6b_Idx = 5
-                    else:
-                        event.reco4b2t_2bh0h = True
-                        event.reco4b2t_Idx = 5
-                    return (h1.Mass + h2.Mass)/2.,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-
-                min_chi2 = 1000000000000000
-                for permutation in permutations:
-                    j0_tmp = permutation[0]
-                    j1_tmp = permutation[1]
-
-                    h3_tmp = j0_tmp + j1_tmp
-
-                    fitted_mass = (h1.Mass + h2.Mass + h3_tmp.M())/3.
-                    chi2 = (h1.Mass - fitted_mass)**2 + (h2.Mass - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
-
-                    if chi2 < min_chi2:
-                        m_fit = fitted_mass
-                        min_chi2 = chi2
-
-                        if j0_tmp.Pt() > j1_tmp.Pt():
-                            j0 = j0_tmp
-                            j1 = j1_tmp
-                        else:
-                            j0 = j1_tmp
-                            j1 = j0_tmp
-                        if len(jets_4vec) > 2:    
-                            j2 = permutation[2] 
-                        if len(jets_4vec) > 3:
-                            j3 = permutation[3] 
-                        if len(jets_4vec) > 4:
-                            j4 = permutation[4] 
-                        if len(jets_4vec) > 5:
-                            j5 = permutation[5] 
-
-                        h3 = h3_tmp
-                if not dotaus:
-                    event.reco6b_2bh1h = True
-                    event.reco6b_Idx = 2
-                else:
-                    event.reco4b2t_2bh1h = True
-                    event.reco4b2t_Idx = 2
-
-            else: # 4b2tau, third resolved Higgs must be made from two taus
-                if len(taus_4vec)<2:
-                    event.reco4b2t_2bh0h = True
-                    event.reco4b2t_Idx = 5
-                    return (h1.Mass + h2.Mass)/2.,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-                permutations = list(itertools.permutations(taus_4vec))
-                permutations = [el[:2] for el in permutations]
-                permutations = list(set(permutations))
-
-                min_chi2 = 1000000000000000
-                for permutation in permutations:
-                    t0_tmp = permutation[0]
-                    t1_tmp = permutation[1]
-                    if t0_tmp.charge * t1_tmp.charge >= 0: continue
-
-                    h3_tmp = t0_tmp + t1_tmp
-
-                    fitted_mass = (h1.Mass + h2.Mass + h3_tmp.M())/3.
-                    chi2 = (h1.Mass - fitted_mass)**2 + (h2.Mass - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
-
-                    if chi2 < min_chi2:
-                        m_fit = fitted_mass
-                        min_chi2 = chi2
-
-                        if t0_tmp.Pt() > t1_tmp.Pt():
-                            j0 = t0_tmp
-                            j1 = t1_tmp
-                        else:
-                            j0 = t1_tmp
-                            j1 = t0_tmp
-                        if len(jets_4vec) > 0:    
-                            j2 = permutation[0] 
-                        if len(jets_4vec) > 1:
-                            j3 = permutation[1] 
-                        if len(jets_4vec) > 2:
-                            j4 = permutation[2] 
-                        if len(jets_4vec) > 3:
-                            j5 = permutation[3] 
-
-                        h3 = h3_tmp
-
-                if min_chi2==1000000000000000: # Happens if opposite sign requirement not fulfilled
-                    event.reco4b2t_2bh0h = True
-                    event.reco4b2t_Idx = 5
-                    return (h1.Mass + h2.Mass)/2.,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-                event.reco4b2t_2bh1h = True
-                event.reco4b2t_Idx = 2
-                event.reco4b2t_TauIsResolved = 3
-
-            h3.Mass = h3.M()
-            h3.pt = h3.Pt()
-            h3.eta = h3.Eta()
-            h3.phi = h3.Phi()            
-            h3.matchH3 = False
-            if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                h3.matchH3 = True
-
-
-        elif len(probejets) == 1:
-            h1 = probejets[0]
-            if probetau!=[]:
-                h1 = probetau
-                event.reco4b2t_TauIsBoosted = 1
-            if self.Run==2:
-                h1.Mass = h1.particleNet_mass
-            else:
-                h1.Mass = h1.mass*h1.particleNet_massCorr
-            h1.matchH1 = h1.HiggsMatch
-
-            if (not dotaus) or probetau!=[]: # All 6b, or 4b2tau if boosted Tau already selected
-                permutations = list(itertools.permutations(jets_4vec))
-                permutations = [el[:6] for el in permutations]
-                permutations = list(set(permutations))
-                if len(jets_4vec)<2:
-                    if not dotaus:
-                        event.reco6b_1bh0h = True
-                        event.reco6b_Idx = 8
-                    else:
-                        event.reco4b2t_1bh0h = True
-                        event.reco4b2t_Idx = 8
-                    return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-                elif len(jets_4vec)<4:
-                    min_chi2 = 1000000000000000
-                    for permutation in permutations:
-                        j0_tmp = permutation[0]
-                        j1_tmp = permutation[1]
-
-                        h2_tmp = j0_tmp + j1_tmp
-
-                        fitted_mass = (h1.Mass + h2_tmp.M())/2.
-                        chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
-
-                        if chi2 < min_chi2:
-                            m_fit = fitted_mass
-                            min_chi2 = chi2
-
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j0 = j0_tmp
-                                j1 = j1_tmp
-                            else:
-                                j0 = j1_tmp
-                                j1 = j0_tmp
-                            if len(jets_4vec) > 2:    
-                                j2 = permutation[2] 
-                            if len(jets_4vec) > 3:
-                                j3 = permutation[3] 
-                            if len(jets_4vec) > 4:
-                                j4 = permutation[4] 
-                            if len(jets_4vec) > 5:
-                                j5 = permutation[5] 
-
-                            h2 = h2_tmp
-                    h2.Mass = h2.M()
-                    h2.pt = h2.Pt()
-                    h2.eta = h2.Eta()
-                    h2.phi = h2.Phi()
-                    h2.matchH2 = False
-                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                        h2.matchH2 = True
-                    if not dotaus:
-                        event.reco6b_1bh1h = True
-                        event.reco6b_Idx = 6
-                    else:
-                        event.reco4b2t_1bh1h = True
-                        event.reco4b2t_Idx = 6
-                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-
-                min_chi2 = 1000000000000000
-                for permutation in permutations:
-                    j0_tmp = permutation[0]
-                    j1_tmp = permutation[1]
-                    j2_tmp = permutation[2]
-                    j3_tmp = permutation[3]
-
-                    h2_tmp = j0_tmp + j1_tmp
-                    h3_tmp = j2_tmp + j3_tmp
-
-                    fitted_mass = (h1.Mass + h2_tmp.M() + h3_tmp.M())/3.
-                    chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
-
-                    if chi2 < min_chi2:
-                        m_fit = fitted_mass
-                        min_chi2 = chi2
-                        if h2_tmp.Pt() > h3_tmp.Pt():
-                            h2 = h2_tmp
-                            h3 = h3_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j0 = j0_tmp
-                                j1 = j1_tmp
-                            else:
-                                j0 = j1_tmp
-                                j1 = j0_tmp
-
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j2 = j2_tmp 
-                                j3 = j3_tmp
-                            else:
-                                j2 = j3_tmp
-                                j3 = j2_tmp
-                        else:
-                            h2 = h3_tmp
-                            h3 = h2_tmp
-                            if j2_tmp.Pt() > j3_tmp.Pt():
-                                j0 = j2_tmp 
-                                j1 = j3_tmp
-                            else:
-                                j1 = j3_tmp
-                                j0 = j2_tmp
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j2 = j0_tmp 
-                                j3 = j1_tmp
-                            else:
-                                j2 = j1_tmp
-                                j3 = j0_tmp
-
-                        if len(jets_4vec) > 4:
-                            j4 = permutation[4]
-                        if len(jets_4vec) > 5:
-                            j5 = permutation[5]
-                if not dotaus:
-                    event.reco6b_1bh2h = True
-                    event.reco6b_Idx = 3
-                else:
-                    event.reco4b2t_1bh2h = True
-                    event.reco4b2t_Idx = 3
-
-            else: # 4b2tau, one resolved Higgs must be made from two taus, and need to find the other one
-                if len(taus_4vec)<2 and len(jets_4vec)<2:
-                    event.reco4b2t_1bh0h = True
-                    event.reco4b2t_Idx = 8
-                    return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-
-                tpermutations = list(itertools.permutations(taus_4vec))
-                tpermutations = [el[:2] for el in tpermutations]
-                tpermutations = list(set(tpermutations))
-
-                jpermutations = list(itertools.permutations(jets_4vec))
-                jpermutations = [el[:6] for el in jpermutations]
-                jpermutations = list(set(jpermutations))
-
-                if len(taus_4vec)<2 or all([perm[0].charge*perm[1].charge>=0 for perm in tpermutations]):
-                    min_chi2 = 1000000000000000
-                    for permutation in jpermutations:
-                        j0_tmp = permutation[0]
-                        j1_tmp = permutation[1]
-
-                        h2_tmp = j0_tmp + j1_tmp
-
-                        fitted_mass = (h1.Mass + h2_tmp.M())/2.
-                        chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
-
-                        if chi2 < min_chi2:
-                            m_fit = fitted_mass
-                            min_chi2 = chi2
-
-                            if j0_tmp.Pt() > j1_tmp.Pt():
-                                j0 = j0_tmp
-                                j1 = j1_tmp
-                            else:
-                                j0 = j1_tmp
-                                j1 = j0_tmp
-                            if len(jets_4vec) > 2:    
-                                j2 = permutation[2] 
-                            if len(jets_4vec) > 3:
-                                j3 = permutation[3] 
-                            if len(jets_4vec) > 4:
-                                j4 = permutation[4] 
-                            if len(jets_4vec) > 5:
-                                j5 = permutation[5] 
-
-                            h2 = h2_tmp
-                    h2.Mass = h2.M()
-                    h2.pt = h2.Pt()
-                    h2.eta = h2.Eta()
-                    h2.phi = h2.Phi()
-                    h2.matchH2 = False
-                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                        h2.matchH2 = True
-                    event.reco4b2t_1bh1h = True
-                    event.reco4b2t_Idx = 6
-                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-
-                if len(jets_4vec)<2:
-                    min_chi2 = 1000000000000000
-                    for permutation in tpermutations:
-                        t0_tmp = permutation[0]
-                        t1_tmp = permutation[1]
-                        if t0_tmp.charge * t1_tmp.charge >= 0: continue
-
-                        h2_tmp = t0_tmp + t1_tmp
-
-                        fitted_mass = (h1.Mass + h2_tmp.M())/3.
-                        chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2
-
-                        if chi2 < min_chi2:
-                            m_fit = fitted_mass
-                            min_chi2 = chi2
-
-                            if t0_tmp.Pt() > t1_tmp.Pt():
-                                j0 = t0_tmp
-                                j1 = t1_tmp
-                            else:
-                                j0 = t1_tmp
-                                j1 = t0_tmp
-                            if len(jets_4vec) > 0:    
-                                j2 = permutation[0] 
-                            if len(jets_4vec) > 1:
-                                j3 = permutation[1] 
-                            if len(jets_4vec) > 2:
-                                j4 = permutation[2] 
-                            if len(jets_4vec) > 3:
-                                j5 = permutation[3] 
-
-                        h2 = h2_tmp
-
-                    if min_chi2==1000000000000000: # Happens if opposite sign requirement not fulfilled
-                        event.reco4b2t_1bh0h = True
-                        event.reco4b2t_Idx = 8
-                        return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-                    h2.Mass = h2.M()
-                    h2.pt = h2.Pt()
-                    h2.eta = h2.Eta()
-                    h2.phi = h2.Phi()
-                    h2.matchH2 = False
-                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                        h2.matchH2 = True
-                    event.reco4b2t_1bh1h = True
-                    event.reco4b2t_Idx = 6
-                    event.reco4b2t_TauIsResolved = 2
-                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-
-                fullpermutations = list(itertools.product(jpermutations, tpermutations))
-                min_chi2 = 1000000000000000
-                for permutation in fullpermutations:
-                    t0_tmp = permutation[1][0]
-                    t1_tmp = permutation[1][1]
-                    if t0_tmp.charge * t1_tmp.charge >= 0: continue
-                    j0_tmp = permutation[0][0]
-                    j1_tmp = permutation[0][1]
-
-                    h2_tmp = j0_tmp + j1_tmp
-                    h3_tmp = t0_tmp + t1_tmp
-
-                    fitted_mass = (h1.Mass + h2_tmp.M() + h3_tmp.M())/3.
-                    chi2 = (h1.Mass - fitted_mass)**2 + (h2_tmp.M() - fitted_mass)**2 + (h3_tmp.M() - fitted_mass)**2
-
-                    if chi2 < min_chi2:
-                        m_fit = fitted_mass
-                        min_chi2 = chi2
-                        h2 = h2_tmp
-                        h3 = h3_tmp # Have the Tau-Higgs be always "as last as possible"
-                        if j0_tmp.Pt() > j1_tmp.Pt():
-                            j0 = j0_tmp
-                            j1 = j1_tmp
-                        else:
-                            j0 = j1_tmp
-                            j1 = j0_tmp
-
-                        if t0_tmp.Pt() > t1_tmp.Pt():
-                            j2 = t0_tmp 
-                            j3 = t1_tmp
-                        else:
-                            j2 = t1_tmp
-                            j3 = t0_tmp
-
-                        if len(jets_4vec) > 4:
-                            j4 = permutation[0][2]
-                        if len(jets_4vec) > 5:
-                            j5 = permutation[0][3]
-
-
-                if min_chi2==1000000000000000:
-                    print("This shouldn't happen! We checked for valid Tau pairs before.")
-                    return h1.Mass,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-                event.reco4b2t_1bh2h = True
-                event.reco4b2t_Idx = 3
-                event.reco4b2t_TauIsResolved = 3
-            h2.Mass = h2.M()
-            h2.pt = h2.Pt()
-            h2.eta = h2.Eta()
-            h2.phi = h2.Phi()
-            h2.matchH2 = False
-            if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                h2.matchH2 = True
-
-            h3.Mass = h3.M()
-            h3.pt = h3.Pt()
-            h3.eta = h3.Eta()
-            h3.phi = h3.Phi()
-            h3.matchH3 = False
-            if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
-                h3.matchH3 = True
-
-        else: 
-
-            if len(jets_4vec) < 2 and len(taus_4vec) < 2:
-                if not dotaus:
-                    event.reco6b_0bh0h = True
-                    event.reco6b_Idx = 0
-                else:
-                    event.reco4b2t_0bh0h = True
-                    event.reco4b2t_Idx = 0
-                return 0,dummyHiggs,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-            else:
-
-                # Technique 3: mass fit
-                jpermutations = list(itertools.permutations(jets_4vec))
-                jpermutations = [el[:6] for el in jpermutations]
-                jpermutations = list(set(jpermutations))
-                tpermutations = list(itertools.permutations(taus_4vec))
-                tpermutations = [el[:2] for el in tpermutations]
-                tpermutations = list(set(tpermutations))
-                fullpermutations = list(itertools.product(jpermutations, tpermutations))
-
-                min_chi2 = 1000000000000000
-                h1 = dummyHiggs
-                h2 = dummyHiggs
-                h3 = dummyHiggs
-                for permutation in fullpermutations:
-                    h_tmp = []
-                    h_tmpgood = []
-                    if len(permutation[0])>1:
-                        j0_tmp = permutation[0][0]
-                        j1_tmp = permutation[0][1]
-                        h_tmp.append(j0_tmp + j1_tmp)
-                        h_tmpgood.append(j0_tmp + j1_tmp)
-                    else:
-                        j0_tmp = dummyJet
-                        j1_tmp = dummyJet
-                        h_tmp.append(dummyHiggs)
-
-                    if len(permutation[0])>3:
-                        j2_tmp = permutation[0][2]
-                        j3_tmp = permutation[0][3]
-                        h_tmp.append(j2_tmp + j3_tmp)
-                        h_tmpgood.append(j2_tmp + j3_tmp)
-                    else:
-                        j2_tmp = dummyJet
-                        j3_tmp = dummyJet
-                        h_tmp.append(dummyHiggs)
-
-                    if not dotaus: # 6b
-                        if len(permutation[0])>5:
-                            j4_tmp = permutation[0][4]
-                            j5_tmp = permutation[0][5]
-                            h_tmp.append(j4_tmp + j5_tmp)
-                            h_tmpgood.append(j4_tmp + j5_tmp)
-                        else:
-                            j4_tmp = dummyJet
-                            j5_tmp = dummyJet
-                            h_tmp.append(dummyHiggs)
-                    else: # 4b2tau
-                        if len(permutation[1])>1:
-                            j4_tmp = permutation[1][0]
-                            j5_tmp = permutation[1][1]
-                            if j4_tmp.charge * j5_tmp.charge >= 0:
-                                j4_tmp = dummyJet
-                                j5_tmp = dummyJet
-                                h_tmp.append(dummyHiggs)
-                            else:
-                                h_tmp.append(j4_tmp + j5_tmp)
-                                h_tmpgood.append(j4_tmp + j5_tmp)
-                        else:
-                            j4_tmp = dummyJet
-                            j5_tmp = dummyJet
-                            h_tmp.append(dummyHiggs)
-
-                    if len(h_tmpgood)==0: continue # Can still happen if we have only Taus and charge requirement is failed
-
-                    fitted_mass = 0.0
-                    for h in h_tmpgood:
-                        fitted_mass += h.M()
-                    fitted_mass = fitted_mass/len(h_tmpgood)
-                    chi2 = 0.0
-                    for h in h_tmpgood:
-                        chi2 += (h.M() - fitted_mass)**2
-
-                    if chi2 < min_chi2:
-                        m_fit = fitted_mass
-                        min_chi2 = chi2
-                        if h_tmp[0].Pt() > h_tmp[1].Pt():
-                            if h_tmp[0].Pt() > h_tmp[2].Pt():# or dotaus:
-                                h1 = h_tmp[0]
-                                if j0_tmp.Pt() > j1_tmp.Pt():
-                                    j0 = j0_tmp
-                                    j1 = j1_tmp
-                                else:
-                                    j0 = j1_tmp
-                                    j1 = j0_tmp
-
-                                if h_tmp[1].Pt() > h_tmp[2].Pt():
-                                    h2 = h_tmp[1]
-                                    if j2_tmp.Pt() > j3_tmp.Pt():
-                                        j2 = j2_tmp 
-                                        j3 = j3_tmp
-                                    else:
-                                        j2 = j3_tmp
-                                        j3 = j2_tmp
-
-                                    h3 = h_tmp[2]
-                                    if j4_tmp.Pt() > j5_tmp.Pt():
-                                        j4 = j4_tmp
-                                        j5 = j5_tmp
-                                    else:
-                                        j4 = j5_tmp
-                                        j5 = j4_tmp
-                                else:
-                                    h2 = h_tmp[2]
-                                    if j4_tmp.Pt() > j5_tmp.Pt():
-                                        j2 = j4_tmp
-                                        j3 = j5_tmp
-                                    else:
-                                        j2 = j5_tmp
-                                        j3 = j4_tmp
-
-                                    h3 = h_tmp[1]
-                                    if j2_tmp.Pt() > j3_tmp.Pt():
-                                        j4 = j2_tmp
-                                        j5 = j3_tmp
-                                    else:
-                                        j4 = j3_tmp
-                                        j5 = j2_tmp
-                            else:
-                                h1 = h_tmp[2]
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j0 = j4_tmp
-                                    j1 = j5_tmp
-                                else:
-                                    j0 = j5_tmp
-                                    j1 = j4_tmp
-
-                                h2 = h_tmp[0]
-                                if j0_tmp.Pt() > j1_tmp.Pt():
-                                    j2 = j0_tmp
-                                    j3 = j1_tmp
-                                else:
-                                    j2 = j1_tmp
-                                    j3 = j0_tmp
-                                h3 = h_tmp[1]
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j4 = j2_tmp
-                                    j5 = j3_tmp
-                                else:
-                                    j4 = j3_tmp
-                                    j5 = j2_tmp
-                        else:
-                            if h_tmp[0].Pt() > h_tmp[2].Pt():
-                                h1 = h_tmp[1]
-                                if j2_tmp.Pt() > j3_tmp.Pt():
-                                    j0 = j2_tmp
-                                    j1 = j3_tmp
-                                else:
-                                    j0 = j3_tmp
-                                    j1 = j2_tmp
-
-                                h2 = h_tmp[0]
-                                if j0_tmp.Pt() > j1_tmp.Pt():
-                                    j2 = j0_tmp
-                                    j3 = j1_tmp
-                                else:
-                                    j2 = j1_tmp
-                                    j3 = j0_tmp
-
-                                h3 = h_tmp[2]
-                                if j4_tmp.Pt() > j5_tmp.Pt():
-                                    j4 = j4_tmp
-                                    j5 = j5_tmp
-                                else:
-                                    j4 = j5_tmp
-                                    j5 = j4_tmp
-                            else:
-                                h3 = h_tmp[0]
-                                if j0_tmp.Pt() > j1_tmp.Pt():
-                                    j4 = j0_tmp
-                                    j5 = j1_tmp
-                                else:
-                                    j4 = j1_tmp
-                                    j5 = j0_tmp
-
-                                if h_tmp[1].Pt() > h_tmp[2].Pt():
-                                    h1 = h_tmp[1]
-                                    if j2_tmp.Pt() > j3_tmp.Pt():
-                                        j0 = j2_tmp
-                                        j1 = j3_tmp
-                                    else:
-                                        j0 = j3_tmp
-                                        j1 = j2_tmp
-                                    h2 = h_tmp[2]
-                                    if j4_tmp.Pt() > j5_tmp.Pt():
-                                        j2 = j4_tmp
-                                        j3 = j5_tmp
-                                    else:
-                                        j2 = j5_tmp
-                                        j3 = j4_tmp
-                                else:
-                                    h1 = h_tmp[2]
-                                    if j4_tmp.Pt() > j5_tmp.Pt():
-                                        j0 = j4_tmp
-                                        j1 = j5_tmp
-                                    else:
-                                        j0 = j5_tmp
-                                        j1 = j4_tmp
-
-                                    h2 = h_tmp[1]
-                                    if j2_tmp.Pt() > j3_tmp.Pt():
-                                        j2 = j2_tmp
-                                        j3 = j3_tmp
-                                    else:
-                                        j2 = j3_tmp
-                                        j3 = j2_tmp
-
-                if h1==dummyHiggs:
-                    if not dotaus:
-                        event.reco6b_0bh0h = True
-                        event.reco6b_Idx = 0
-                    else:
-                        event.reco4b2t_0bh0h = True
-                        event.reco4b2t_Idx = 0
-                    return 0,dummyHiggs,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-                else:
-                    h1.Mass = h1.M()
-                    h1.pt = h1.Pt()
-                    h1.eta = h1.Eta()
-                    h1.phi = h1.Phi()
-                    h1.matchH1 = False
-                    if j0.HiggsMatch == True and j1.HiggsMatch == True and j0.HiggsMatchIndex == j1.HiggsMatchIndex:
-                        h1.matchH1 = True
-
-                if h2==dummyHiggs:
-                    if not dotaus:
-                        event.reco6b_0bh1h = True
-                        event.reco6b_Idx = 9
-                    else:
-                        event.reco4b2t_0bh1h = True
-                        event.reco4b2t_Idx = 9
-                        if j0.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 1
-                    return m_fit,h1,dummyHiggs,dummyHiggs,j0,j1,j2,j3,j4,j5
-                else:
-                    h2.Mass = h2.M()
-                    h2.pt = h2.Pt()
-                    h2.eta = h2.Eta()
-                    h2.phi = h2.Phi()
-                    h2.matchH2 = False
-                    if j2.HiggsMatch == True and j3.HiggsMatch == True and j2.HiggsMatchIndex == j3.HiggsMatchIndex:
-                        h2.matchH2 = True
-
-                if h3==dummyHiggs:
-                    if not dotaus:
-                        event.reco6b_0bh2h = True
-                        event.reco6b_Idx = 7
-                    else:
-                        event.reco4b2t_0bh2h = True
-                        event.reco4b2t_Idx = 7
-                        if j0.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 1
-                        elif j2.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 2
-                    return m_fit,h1,h2,dummyHiggs,j0,j1,j2,j3,j4,j5
-                else:
-                    h3.Mass = h3.M()
-                    h3.pt = h3.Pt()
-                    h3.eta = h3.Eta()
-                    h3.phi = h3.Phi()
-                    h3.matchH3 = False
-                    if j4.HiggsMatch == True and j5.HiggsMatch == True and j4.HiggsMatchIndex == j5.HiggsMatchIndex:
-                        h3.matchH3 = True
-
-                    if not dotaus:
-                        event.reco6b_0bh3h = True
-                        event.reco6b_Idx = 4
-                    else:
-                        event.reco4b2t_0bh3h = True
-                        event.reco4b2t_Idx = 4
-                        if j0.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 1
-                        elif j2.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 2
-                        elif j4.DeepTauVsJet != -1: event.reco4b2t_TauIsResolved = 3
-
-        return m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5
-    '''
 
     def fillTriggerFilters(self, event):
 
@@ -2417,17 +1863,218 @@ class hhh6bProducerPNetAK4(Module):
             numberOfObjects = len([el for el in trigobjHT if el.filterBits & (1 << triggerFiltersHT[key])])
             self.out.fillBranch(name,numberOfObjects)
 
+
+    def fillClassification(self, output_values):
+
+        self.out.fillBranch("probHHH", output_values[12][0][1] )
+        self.out.fillBranch("probQCD", output_values[12][0][2] )
+        self.out.fillBranch("probTT", output_values[12][0][3] )
+        self.out.fillBranch("probVJets", output_values[12][0][4] )
+        self.out.fillBranch("probVV", output_values[12][0][5] )
+        self.out.fillBranch("probHHH4b2tau", output_values[12][0][6] )
+        self.out.fillBranch("probHH4b", output_values[12][0][7] )
+        self.out.fillBranch("probHH2b2tau", output_values[12][0][8] )
+
+
+    def fillCategorisation(self, output_values):
+
+        self.out.fillBranch("prob3bh0h", output_values[12][0][1] )
+        self.out.fillBranch("prob2bh1h", output_values[12][0][2] )
+        self.out.fillBranch("prob1bh2h", output_values[12][0][3] )
+        self.out.fillBranch("prob0bh3h", output_values[12][0][4] )
+        self.out.fillBranch("prob2bh0h", output_values[12][0][5] )
+        self.out.fillBranch("prob1bh1h", output_values[12][0][6] )
+        self.out.fillBranch("prob0bh2h", output_values[12][0][7] )
+        self.out.fillBranch("prob1bh0h", output_values[12][0][8] )
+        self.out.fillBranch("prob0bh1h", output_values[12][0][9] )
+        self.out.fillBranch("prob0bh0h", output_values[12][0][0] )
+
+
+        
+
+    def prepare_inputs_spanet(self,event): # for SPANET ONNX inference
+        jets = event.ak4jets[:10]
+        fatjets = event.fatjets[0:3]
+        met = float(event.met.pt)
+        ht = float(event.ht)
+        leptons = event.looseLeptons[:2]
+        taus = event.looseTaus[:2] # hardcoded to be changed later
+
+        # depends on if the inputs need a log transform from spanet
+
+        # jet arrays
+        array = []
+        for i  in range(10):
+            
+            try:
+                j = jets[i]
+                if self.SpanetONNXNeedLogTransform:                     
+                    arr = np.array([float(j.pt * j.bRegCorr), float(j.eta), float(np.sin(j.phi)),float(np.cos(j.phi)), float(j.btagPNetB),float(np.log(j.mass+1)),]).astype(np.float32) # order matters here
+                else:
+                    arr = np.array([float(j.pt * j.bRegCorr), float(j.eta), float(np.sin(j.phi)),float(np.cos(j.phi)), float(j.btagPNetB),float(j.mass),]).astype(np.float32) # order matters here
+            except:
+                arr = np.array([0.,0.,0.,0.,0.,0.]).astype(np.float32)
+            array.append([arr])
+        # fatjet arrays
+        boosted_array = []
+        for i in range(3):
+            try:
+                fj = fatjets[i]
+                if self.SpanetONNXNeedLogTransform:  
+                    boost_arr = np.array([float(np.log(fj.pt+1)),float(fj.eta),float(np.sin(fj.phi)), float(np.cos(fj.phi)), float(fj.Xbb), float(fj.Xjj), float(fj.particleNetMD_QCD), float(fj.particleNet_mass)]).astype(np.float32)    
+                else:
+                    boost_arr = np.array([float(fj.pt),float(fj.eta),float(np.sin(fj.phi)), float(np.cos(fj.phi)), float(fj.Xbb), float(fj.Xjj), float(fj.particleNetMD_QCD), float(fj.particleNet_mass)]).astype(np.float32)
+            except:
+                boost_arr = np.array([0.,0.,0.,0.,0.,0.,0.,0.]).astype(np.float32)
+                
+            boosted_array.append([boost_arr])
+
+        # electrons and muons
+        lep_array = []
+        for i in range(2):
+            try:
+                lep = leptons[i]
+                if self.SpanetONNXNeedLogTransform: 
+                    lep_arr = np.array([float(np.log(lep.pt+1)), float(lep.eta), float(np.sin(lep.phi)),float(np.cos(lep.phi))]).astype(np.float32)
+                else:
+                    lep_arr = np.array([float(lep.pt), float(lep.eta), float(np.sin(lep.phi)),float(np.cos(lep.phi))]).astype(np.float32)
+            except:
+                lep_arr = np.array([0.,0.,0.,0.]).astype(np.float32)
+            lep_array.append([lep_arr])
+
+        # taus
+        tau_array = []
+        for i in range(2):
+            try:
+                tau = taus[i]
+                if self.SpanetONNXNeedLogTransform: 
+                    tau_arr = np.array([float(np.log(tau.pt+1)), float(tau.eta), float(np.sin(tau.phi)),float(np.cos(tau.phi)) ]).astype(np.float32)
+                else: 
+                    tau_arr = np.array([float(tau.pt), float(tau.eta), float(np.sin(tau.phi)),float(np.cos(tau.phi)) ]).astype(np.float32)
+            except:
+                tau_arr = np.array([0.,0.,0.,0.]).astype(np.float32)
+            tau_array.append([tau_arr])
+
+        # Higgses candidates from AK4
+        higgs_array = {}
+        for i in range(10):
+            higgs_list = []
+            name = 'Jet%d'%(i+1)
+            try:
+                jet1 = polarP4(jets[i])
+                
+                for j in range(10):
+                    try:
+                        jet2 = polarP4(jets[j])
+                        if i == j: continue 
+                        if j < i : continue 
+                        higgs = jet1+jet2
+                        if self.SpanetONNXNeedLogTransform: 
+                            higgs_arr = np.array([ float(np.log(higgs.M()+1)), float(np.log(higgs.Pt()+1)),float(higgs.Eta()), float(np.sin(higgs.Phi())), float(np.cos(higgs.Phi())), float(deltaR(jets[i],jets[j])) ]).astype(np.float32)
+                        else: 
+                            higgs_arr = np.array([ float(higgs.M()), float(higgs.Pt()),float(higgs.Eta()), float(np.sin(higgs.Phi())), float(np.cos(higgs.Phi())), float(deltaR(jets[i],jets[j])) ]).astype(np.float32)
+                        higgs_list.append(higgs_arr)
+                    except:
+                        higgs_arr = np.array([0.,0.,0.,0.,0.,0.]).astype(np.float32)
+                        higgs_list.append(higgs_arr)
+
+            except:
+                for j in range(i+1, 10):
+                    higgs_arr = np.array([0.,0.,0.,0.,0.,0.]).astype(np.float32)
+                    higgs_list.append(higgs_arr)
+
+            higgs_array[name] = [higgs_list]
+
+        if self.SpanetONNXNeedLogTransform: 
+            met_array = [np.array([np.log(met+1)])]
+            ht_array = [np.array([np.log(ht+1)])]
+            MIN_PT = np.log(20 + 1)
+            MIN_FJPT = np.log(200+1)
+            MIN_MASS = np.log(20+1)
+        else:
+            met_array = [np.array([met])]
+            ht_array = [np.array([ht])]
+            MIN_PT = 20
+            MIN_FJPT = 200
+            MIN_MASS = 20
+        
+        
+
+        Jets_data = np.transpose(array,(1,0,2)).astype(np.float32)
+        Jets_mask = Jets_data[:,:,0] > MIN_PT
+
+        BoostedJets_data = np.transpose(boosted_array,(1,0,2)).astype(np.float32)
+        BoostedJets_mask = BoostedJets_data[:,:,0] > MIN_FJPT
+
+        Leptons_data = np.transpose(lep_array,(1,0,2)).astype(np.float32)
+        Leptons_mask = Leptons_data[:,:,0] > MIN_PT
+
+        Taus_data = np.transpose(tau_array,(1,0,2)).astype(np.float32)
+        Taus_mask = Taus_data[:,:,0] > MIN_PT
+
+        MET_data = np.transpose([met_array],(1,0,2)).astype(np.float32)
+        MET_mask = MET_data[:,:,0] > 0
+
+        HT_data = np.transpose([ht_array],(1,0,2)).astype(np.float32)
+        HT_mask = MET_data[:,:,0] > 0
+
+        Jet1_data = np.array(higgs_array['Jet1']).astype(np.float32)
+        Jet1_mask = Jet1_data[:,:,0] > MIN_MASS
+
+        Jet2_data = np.array(higgs_array['Jet2']).astype(np.float32)
+        Jet2_mask = Jet2_data[:,:,0] > MIN_MASS
+
+        Jet3_data = np.array(higgs_array['Jet3']).astype(np.float32)
+        Jet3_mask = Jet3_data[:,:,0] > MIN_MASS
+
+        Jet4_data = np.array(higgs_array['Jet4']).astype(np.float32)
+        Jet4_mask = Jet4_data[:,:,0] > MIN_MASS
+
+        Jet5_data = np.array(higgs_array['Jet5']).astype(np.float32)
+        Jet5_mask = Jet5_data[:,:,0] > MIN_MASS
+
+        Jet6_data = np.array(higgs_array['Jet6']).astype(np.float32)
+        Jet6_mask = Jet6_data[:,:,0] > MIN_MASS
+
+        Jet7_data = np.array(higgs_array['Jet7']).astype(np.float32)
+        Jet7_mask = Jet7_data[:,:,0] > MIN_MASS
+
+        Jet8_data = np.array(higgs_array['Jet8']).astype(np.float32)
+        Jet8_mask = Jet8_data[:,:,0] > MIN_MASS
+
+        Jet9_data = np.array(higgs_array['Jet9']).astype(np.float32)
+        Jet9_mask = Jet9_data[:,:,0] > MIN_MASS
+
+        #Jet10_data = np.array(higgs_array['Jet10']).astype(np.float32)
+        #Jet10_mask = Jet10_data[:,:,0] > 20
+        input_dict = {"Jets_data": Jets_data, "Jets_mask": Jets_mask, "BoostedJets_data":BoostedJets_data, "BoostedJets_mask": BoostedJets_mask, "Leptons_data" : Leptons_data, "Leptons_mask" : Leptons_mask, 'Taus_data' : Taus_data, 'Taus_mask': Taus_mask, "MET_data" : MET_data, "MET_mask": MET_mask, 'HT_data': HT_data, "HT_mask" : HT_mask, 'Jet1_data' : Jet1_data, 'Jet1_mask': Jet1_mask, 'Jet2_data' : Jet2_data, 'Jet2_mask': Jet2_mask, 'Jet3_data' : Jet3_data, 'Jet3_mask': Jet3_mask, 'Jet4_data' : Jet4_data, 'Jet4_mask': Jet4_mask, 'Jet5_data' : Jet5_data, 'Jet5_mask': Jet5_mask, 'Jet6_data' : Jet6_data, 'Jet6_mask': Jet6_mask, 'Jet7_data' : Jet7_data, 'Jet7_mask': Jet7_mask, 'Jet8_data' : Jet8_data, 'Jet8_mask': Jet8_mask,'Jet9_data' : Jet9_data, 'Jet9_mask': Jet9_mask}
+        #for key, value in input_dict.items():
+        #    print(key, value.shape)
+        return input_dict
     
     def analyze(self, event):
         """process event, return True (go to next module) or False (fail, go to next event)"""
         
+        # First pre-selection - makes run 5x faster
+        allJets = Collection(event, "Jet")
+        loose_jets = [j for j in allJets if j.pt > 20 and abs(j.eta) < 2.5]
+        
+        if len(loose_jets) < 4 : return False
+
         # fill histograms
         event.gweight = 1
         if self.isMC:
             event.gweight = event.genWeight / abs(event.genWeight)
 
+
+
         # select leptons and correct jets
         self.selectLeptons(event)
+
+        # Iniatialise ftag weight for each event
+        self.ftagwgts = self.ftagbasewgts.copy()
+        self.fj_ftagwgts = self.fj_ftagbasewgts.copy()
+
         self.correctJetsAndMET(event)          
         
         # basic jet selection 
@@ -2436,6 +2083,10 @@ class hhh6bProducerPNetAK4(Module):
         
         #probe_jets.sort(key=lambda x: x.pt, reverse=True)
         probe_jets.sort(key=lambda x: x.Xbb, reverse=True)
+        pass1AK8PNet = False
+        if len(probe_jets) > 0:
+            if probe_jets[0].Xbb > 0.8:
+                pass1AK8PNet = True
 
 
 
@@ -2478,12 +2129,12 @@ class hhh6bProducerPNetAK4(Module):
             if (self.nFatJets == 3 and self.nSmallJets > 5 ): passSel = True
         elif self._opts['option'] == "4":
             #if (self.nSmallJets > 5 and self.nBTaggedJets > 2): passSel = True
-            if (self.nSmallJets > -1): passSel = True
+            if (self.nSmallJets > 3 or pass1AK8PNet): passSel = True
 
         if not passSel: return False
 
         # load gen history
-        hadGenHs = self.loadGenHistory(event, probe_jets)
+        hadGenHs = self.loadGenHistory(event, probe_jets, event.ak4jets)
         self.hadGenHs = hadGenHs
 
         for j in event.ak4jets+event.looseTaus:
@@ -2492,6 +2143,10 @@ class hhh6bProducerPNetAK4(Module):
             j.HiggsMatchIndex = -1
             j.FatJetMatchIndex = -1
             j.MatchedGenPt = 0.
+            j.Charge = 0
+            j.pdgId = -999
+            j.drGen = 0.
+            
 
         for fj in probe_jets:
             fj.HiggsMatch = False
@@ -2516,6 +2171,15 @@ class hhh6bProducerPNetAK4(Module):
                         fj.HiggsMatch = True
                         fj.HiggsMatchIndex = index_h+1
                         fj.MatchedGenPt = higgs_gen.pt
+                
+                for jet in event.ak4jets:
+                    if abs(jet.dr_genQuark) < 0.4:
+                        jet.Charge = int(jet.genQuark.pdgId/abs(jet.genQuark.pdgId))
+                        jet.drGen = jet.dr_genQuark
+                        jet.pdgId = jet.genQuark.pdgId
+                    else:
+                        jet.Charge = int(0)
+
 
             self.out.fillBranch("nHiggsMatchedJets", matched)
 
@@ -2545,7 +2209,8 @@ class hhh6bProducerPNetAK4(Module):
                  #"2022EE" : 0.91255}[self.year]
         XtautauWP = 0.9
         self.out.fillBranch("nprobejets", len([fj for fj in probe_jets if fj.pt > 200 and fj.Xbb > XbbWP]))
-        self.out.fillBranch("nprobetaus", len([fj for fj in probe_jets if fj.pt > 200 and fj.Xtautau > XtautauWP]))
+        if self.Run == 3:
+            self.out.fillBranch("nprobetaus", len([fj for fj in probe_jets if fj.pt > 200 and fj.Xtautau > XtautauWP]))
         #print(len(probe_jets))
         #if len(probe_jets) > 0:
         self.fillFatJetInfo(event, probe_jets)
@@ -2557,7 +2222,8 @@ class hhh6bProducerPNetAK4(Module):
             self.fillJetInfo(event, event.ak4jets, probe_jets, XbbWP, event.looseTaus, XtautauWP)
         except IndexError:
             return False
-
+        if self.isMC:
+            self.fillFTAGSF()
         self.fillLeptonInfo(event, event.looseLeptons)
         self.fillTauInfo(event, event.looseTaus)
  
@@ -2566,6 +2232,19 @@ class hhh6bProducerPNetAK4(Module):
             self.fillFatJetInfoJME(event, probe_jets)
 
         #self.fillTriggerFilters(event) 
+
+        # SPANET inference
+
+        doSpanet = False
+        if doSpanet:
+            input_dict = self.prepare_inputs_spanet(event)
+            output_classification = self.session_classification.run(self.output_nodes_classification, input_dict)
+
+            output_categorisation = self.session_categorisation.run(self.output_nodes_categorisation, input_dict)
+
+            self.fillClassification(output_classification)
+            self.fillCategorisation(output_categorisation)
+
         return True
 
 # define modules using the syntax 'name = lambda : constructor' to avoid having them loaded when not needed
