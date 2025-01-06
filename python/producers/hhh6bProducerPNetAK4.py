@@ -794,7 +794,7 @@ class hhh6bProducerPNetAK4(Module):
         for gp in genparts:
             if gp.statusFlags & (1 << 13) == 0:
                 continue
-            print(gp.pdgId)
+            #print(gp.pdgId)
 
             if abs(gp.pdgId) == 6:
                 for idx in gp.dauIdx:
