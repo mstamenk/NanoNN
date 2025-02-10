@@ -57,7 +57,10 @@ def higgsPairingAlgorithm_v2(event, jets, fatjets, XbbWP, isMC, Run, dotaus=Fals
     dummyHiggs.phi = -1
     dummyHiggs.dRjets = 0.
 
-    probetau = sorted([fj for fj in fatjets if fj.Xtautau > XtautauWP], key=lambda x: x.Xtautau, reverse = True)
+    if dotaus:
+      probetau = sorted([fj for fj in fatjets if fj.Xtautau > XtautauWP], key=lambda x: x.Xtautau, reverse = True)
+    else:
+      probetau = []
     if len(probetau)>0:
         probetau = probetau[0]
     probejets = sorted([fj for fj in fatjets if fj.Xbb > XbbWP and fj!=probetau], key=lambda x: x.Xbb, reverse = True)
