@@ -879,22 +879,22 @@ class hhh6bProducerPNetAK4(Module):
             el.Id = el.charge * (-11)
             #if el.pt > 35 and abs(el.eta) <= 2.5 and el.miniPFRelIso_all <= 0.2 and el.cutBased:
             if self.Run==2:
-                if el.pt > 15 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.pfRelIso03_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaFall17V2Iso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
+                if el.pt > 15 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.pfRelIso03_all <= 0.15 and el.lostHits <= 1 and el.convVeto and el.mvaFall17V2Iso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
                     event.looseLeptons.append(el)
             else:
-                if el.pt > 10 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.miniPFRelIso_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaNoIso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
+                if el.pt > 10 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.miniPFRelIso_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaIso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
                     event.looseLeptons.append(el)
             if self.Run==2:
                 if el.pt > 30 and el.mvaFall17V2Iso_WP90:
                     event.cleaningElectrons.append(el)
             else:
-                if el.pt > 30 and el.mvaNoIso_WP90:
+                if el.pt > 30 and el.mvaIso_WP90:
                     event.cleaningElectrons.append(el)
 
         muons = Collection(event, "Muon")
         for mu in muons:
             mu.Id = mu.charge * (-13)
-            if mu.pt > 15 and abs(mu.eta) <= 2.4 and abs(mu.dxy) < 0.045 and abs(mu.dz) < 0.2 and mu.mediumId and mu.pfRelIso03_all <= 0.2: # mu.tightId
+            if mu.pt > 10 and abs(mu.eta) <= 2.4 and abs(mu.dxy) < 0.045 and abs(mu.dz) < 0.2 and mu.mediumId and mu.pfRelIso03_all <= 0.15: # mu.tightId
                 event.looseLeptons.append(mu)
             if mu.pt > 30 and mu.looseId:
                 event.cleaningMuons.append(mu)
