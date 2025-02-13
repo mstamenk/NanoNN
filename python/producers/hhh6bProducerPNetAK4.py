@@ -1221,7 +1221,7 @@ class hhh6bProducerPNetAK4(Module):
                     j.btagPNetC = -1
                     j.btagPNetBPlusC = -1
                     j.btagPNetBVsC = -1
-                    j.tag = 0
+                    j.tag = -1
             
             else:
                 pass
@@ -1677,7 +1677,7 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "PNetC", j.btagPNetC)
                 fillBranch(prefix + "PNetBPlusC", j.btagPNetBPlusC)
                 fillBranch(prefix + "PNetBVsC", j.btagPNetBVsC)
-                if j.tag:   
+                if j.tag and j.tag > -1:   
                     fillBranch(prefix + "PNetTagCat", self.ftag_mapping[j.tag])
                 else: 
                     fillBranch(prefix + "PNetTagCat", -1)
