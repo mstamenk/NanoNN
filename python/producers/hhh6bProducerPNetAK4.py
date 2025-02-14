@@ -557,6 +557,8 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("h3_t3_dRjets", "F")
 
         self.out.branch("h_fit_mass", "F")
+        self.out.branch("hhh_mass", "F")
+        self.out.branch("hhh_pt", "F")
 
         self.out.branch("h1_4b2t_pt", "F")
         self.out.branch("h1_4b2t_eta", "F")
@@ -626,6 +628,15 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("ntaus", "I")
         self.out.branch("nleps", "I")
         self.out.branch("nbtags", "I")
+
+        self.out.branch("njetsPassLooseWP","I")
+        self.out.branch("njetsPassMediumWP","I")
+        self.out.branch("njetsPassTightWP","I")
+
+        self.out.branch("nFatjetsPassMediumWP","I")
+        self.out.branch("nFatjetsPassTightWP","I")
+
+
         for idx in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]):
             prefix = 'jet%i'%idx
             self.out.branch(prefix + "Pt", "F")
@@ -1764,7 +1775,8 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("min_h_dRjets", min(h1.dRjets,h2.dRjets,h3.dRjets))
 
             self.out.fillBranch("h_fit_mass", m_fit)
-
+            self.out.fillBranch("hhh_mass", (h1+h2+h3).Mass)
+            self.out.fillBranch("hhh_pt", (h1+h2+h3).pt)
 
             # Technique 3: mass fitter for Taus
             
@@ -1805,6 +1817,35 @@ class hhh6bProducerPNetAK4(Module):
                 self.out.fillBranch("reco4b2t_Idx", event.reco4b2t_Idx)
                 self.out.fillBranch("reco4b2t_TauIsBoosted", event.reco4b2t_TauIsBoosted)
                 self.out.fillBranch("reco4b2t_TauIsResolved", event.reco4b2t_TauIsResolved)
+
+    def fillNbtag(self,event):
+        count_jet_loose = 0
+        count_jet_medium = 0
+        count_jet_tight = 0
+        count_fatjet_medium = 0
+        count_fatjet_tight = 0        
+        for j in event.ak4jets:
+            if j.tag in [54,53]: 
+                count_jet_tight += 1
+            if j.tag in [54,53,52,51]: 
+                count_jet_medium += 1
+            if j.tag in [54,53,52,51,50]: 
+                count_jet_loose += 1
+
+        for fj in event.fatjets:
+            if fj.tag == 2:
+                count_fatjet_tight +=1
+            if fj.tag in [2,1]:
+                count_fatjet_medium +=1
+                
+        
+        self.out.fillBranch("njetsPassLooseWP",count_jet_loose)
+        self.out.fillBranch("njetsPassMediumWP",count_jet_medium)
+        self.out.fillBranch("njetsPassTightWP",count_jet_tight)
+
+        self.out.fillBranch("nFatjetsPassMediumWP",count_fatjet_medium)
+        self.out.fillBranch("nFatjetsPassTightWP",count_fatjet_tight)
+
 
     def fillFTAGSF(self):
 
