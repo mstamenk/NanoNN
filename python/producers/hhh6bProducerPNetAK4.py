@@ -525,6 +525,8 @@ class hhh6bProducerPNetAK4(Module):
                 self.out.branch(prefix + "PtOverMHH_JMS_Up", "F")
                 self.out.branch(prefix + "PtOverMHH_JMR_Down", "F")
                 self.out.branch(prefix + "PtOverMHH_JMR_Up", "F")
+                self.out.branch(prefix + "PNetSF", "F")
+
 
                 if self._allJME:
                     for syst in self._jmeLabels:
@@ -555,6 +557,8 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("h3_t3_dRjets", "F")
 
         self.out.branch("h_fit_mass", "F")
+        self.out.branch("hhh_mass", "F")
+        self.out.branch("hhh_pt", "F")
 
         self.out.branch("h1_4b2t_pt", "F")
         self.out.branch("h1_4b2t_eta", "F")
@@ -624,6 +628,15 @@ class hhh6bProducerPNetAK4(Module):
         self.out.branch("ntaus", "I")
         self.out.branch("nleps", "I")
         self.out.branch("nbtags", "I")
+
+        self.out.branch("njetsPassLooseWP","I")
+        self.out.branch("njetsPassMediumWP","I")
+        self.out.branch("njetsPassTightWP","I")
+
+        self.out.branch("nFatjetsPassMediumWP","I")
+        self.out.branch("nFatjetsPassTightWP","I")
+
+
         for idx in ([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]):
             prefix = 'jet%i'%idx
             self.out.branch(prefix + "Pt", "F")
@@ -631,6 +644,8 @@ class hhh6bProducerPNetAK4(Module):
             self.out.branch(prefix + "Phi", "F")
             self.out.branch(prefix + "DeepFlavB", "F")
             self.out.branch(prefix + "PNetB", "F")
+            self.out.branch(prefix + "PNetSF", "F")
+
             if self.Run == 2:
                 self.out.branch(prefix + "PNetC", "F")
                 self.out.branch(prefix + "PNetBPlusC", "F")
@@ -654,12 +669,13 @@ class hhh6bProducerPNetAK4(Module):
                 self.out.branch(prefix + "bRegRes", "F")
                 self.out.branch(prefix + "cRegCorr", "F")
                 self.out.branch(prefix + "cRegRes", "F")
+                self.out.branch(prefix + "FatJetMatched", "O")
+                self.out.branch(prefix + "FatJetMatchedIndex", "I")
             if self.isMC:
                 self.out.branch(prefix + "HadronFlavour", "F")
                 self.out.branch(prefix + "HiggsMatched", "O")
                 self.out.branch(prefix + "HiggsMatchedIndex", "I")
-                self.out.branch(prefix + "FatJetMatched", "O")
-                self.out.branch(prefix + "FatJetMatchedIndex", "I")
+
                 self.out.branch(prefix + "Charge", "I")
                 self.out.branch(prefix + "PdgId", "I")
                 self.out.branch(prefix + "DRGenQuark", "F")
@@ -874,22 +890,22 @@ class hhh6bProducerPNetAK4(Module):
             el.Id = el.charge * (-11)
             #if el.pt > 35 and abs(el.eta) <= 2.5 and el.miniPFRelIso_all <= 0.2 and el.cutBased:
             if self.Run==2:
-                if el.pt > 10 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.miniPFRelIso_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaFall17V2noIso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
+                if el.pt > 15 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.pfRelIso03_all <= 0.15 and el.lostHits <= 1 and el.convVeto and el.mvaFall17V2Iso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
                     event.looseLeptons.append(el)
             else:
-                if el.pt > 10 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.miniPFRelIso_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaNoIso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
+                if el.pt > 10 and abs(el.eta) <= 2.5 and abs(el.dxy) < 0.045 and abs(el.dz) < 0.2 and el.miniPFRelIso_all <= 0.2 and el.lostHits <= 1 and el.convVeto and el.mvaIso_WP90: #and el.cutBased>3: # cutBased ID: (0:fail, 1:veto, 2:loose, 3:medium, 4:tight)
                     event.looseLeptons.append(el)
             if self.Run==2:
-                if el.pt > 30 and el.mvaFall17V2noIso_WP90:
+                if el.pt > 30 and el.mvaFall17V2Iso_WP90:
                     event.cleaningElectrons.append(el)
             else:
-                if el.pt > 30 and el.mvaNoIso_WP90:
+                if el.pt > 30 and el.mvaIso_WP90:
                     event.cleaningElectrons.append(el)
 
         muons = Collection(event, "Muon")
         for mu in muons:
             mu.Id = mu.charge * (-13)
-            if mu.pt > 10 and abs(mu.eta) <= 2.4 and abs(mu.dxy) < 0.045 and abs(mu.dz) < 0.2 and mu.mediumId and mu.miniPFRelIso_all <= 0.2: # mu.tightId
+            if mu.pt > 10 and abs(mu.eta) <= 2.4 and abs(mu.dxy) < 0.045 and abs(mu.dz) < 0.2 and mu.mediumId and mu.pfRelIso03_all <= 0.15: # mu.tightId
                 event.looseLeptons.append(mu)
             if mu.pt > 30 and mu.looseId:
                 event.cleaningMuons.append(mu)
@@ -1119,19 +1135,22 @@ class hhh6bProducerPNetAK4(Module):
                 if fj.Xbb > self.fatjet_flavtag_wps[self.year][0]:  # Tight working point
                     fj.tag = 2 # Tight working point
                     if self.isMC:
-                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= self.fatjet_flavtag_sf[0]
+                        fj.ftagSF = self.fatjet_flavtag_sf[0]
+                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= fj.ftagSF
                         self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[0]
                         self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[0]
                 elif fj.Xbb < self.fatjet_flavtag_wps[self.year][0] and fj.Xbb > self.fatjet_flavtag_wps[self.year][1]: # Medium working point
                     fj.tag = 1
                     if self.isMC:
-                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= self.fatjet_flavtag_sf[1]
+                        fj.ftagSF = self.fatjet_flavtag_sf[1]
+                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= fj.ftagSF
                         self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[1]
                         self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[1]
                 elif fj.Xbb < self.fatjet_flavtag_wps[self.year][1] : # Inefficiency scale factor
                     fj.tag = 0
                     if self.isMC:
-                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= self.fatjet_flavtag_sf[2]
+                        fj.ftagSF = self.fatjet_flavtag_sf[2]
+                        self.fj_ftagwgts['fatJetFlavTagWeight'] *= fj.ftagSF
                         self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[2]
                         self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[2]
 
@@ -1213,7 +1232,7 @@ class hhh6bProducerPNetAK4(Module):
                     j.btagPNetC = -1
                     j.btagPNetBPlusC = -1
                     j.btagPNetBVsC = -1
-                    j.tag = 0
+                    j.tag = -1
             
             else:
                 pass
@@ -1247,17 +1266,35 @@ class hhh6bProducerPNetAK4(Module):
         #event.ak4jets.sort(key=lambda x : x.btagDeepFlavB, reverse = True)
         event.ak4jets.sort(key=lambda x : x.btagPNetB, reverse = True)
 
+        for j in event.ak4jets:
+            j.FatJetMatch = False
+            j.FatJetMatchedIndex = -1
+
+        index_fj = 0
+        for fj in event.fatjets:
+            index_fj += 1
+            for j in event.ak4jets:
+                if deltaR(fj,j) < 0.8:
+                    j.FatJetMatch = True
+                    j.FatJetMatchIndex = index_fj
+
         # Apply FTAG calibrations
         if self.Run ==2:
 
             if self.isMC: 
                 for j in event.ak4jets:
                     #print("Jet properties",j.btagPNetBPlusC, j.btagPNetBVsC, j.pt, abs(j.eta))
-                    self.ftagwgts['flavTagWeight'] *= self.ftagSF.get_sf(j)
+                    if j.tag > -1:
+                        j.ftagSF = self.ftagSF.get_sf(j)
+                    else:
+                        j.ftagSF = 1
+                    if j.FatJetMatch == False: 
+                        self.ftagwgts['flavTagWeight'] *= j.ftagSF
 
                     for syst in self.ftag_systematics:
-                        self.ftagwgts[f'flavTagWeight_{syst}_UP'] *= self.ftagSF.get_sf(j, 'up_' + syst)
-                        self.ftagwgts[f'flavTagWeight_{syst}_DOWN'] *= self.ftagSF.get_sf(j, 'down_' + syst)
+                        if j.FatJetMatch == False: 
+                            self.ftagwgts[f'flavTagWeight_{syst}_UP'] *= self.ftagSF.get_sf(j, 'up_' + syst)
+                            self.ftagwgts[f'flavTagWeight_{syst}_DOWN'] *= self.ftagSF.get_sf(j, 'down_' + syst)
 
 
         self.nBTaggedJets = int(len(event.bmjets))
@@ -1523,6 +1560,8 @@ class hhh6bProducerPNetAK4(Module):
                 fill_fj(prefix + "HiggsMatched", fj.HiggsMatch)
                 fill_fj(prefix + "HiggsMatchedIndex", fj.HiggsMatchIndex)
                 fill_fj(prefix + "MatchedGenPt", fj.MatchedGenPt)
+                fill_fj(prefix + "PNetSF", fj.ftagSF)
+
 
             fill_fj(prefix + "Tau3OverTau2", fj.t32)
             
@@ -1649,7 +1688,13 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "PNetC", j.btagPNetC)
                 fillBranch(prefix + "PNetBPlusC", j.btagPNetBPlusC)
                 fillBranch(prefix + "PNetBVsC", j.btagPNetBVsC)
-                #fillBranch(prefix + "PNetTagCat", self.ftag_mapping[j.tag])
+                if j.tag and j.tag > -1:   
+                    fillBranch(prefix + "PNetTagCat", self.ftag_mapping[j.tag])
+                else: 
+                    fillBranch(prefix + "PNetTagCat", -1)
+
+
+
             else:
                 fillBranch(prefix + "PNetCvB", j.btagPNetCvB)
                 fillBranch(prefix + "PNetCvL", j.btagPNetCvL)
@@ -1663,7 +1708,8 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "bRegRes", j.bRegRes)
                 fillBranch(prefix + "cRegCorr", j.cRegCorr)
                 fillBranch(prefix + "cRegRes", j.cRegRes)
-
+                fillBranch(prefix + "FatJetMatched", j.FatJetMatch) # Fill for Data too
+                fillBranch(prefix + "FatJetMatchedIndex", j.FatJetMatchIndex)
 
             if self.isMC:
                 fillBranch(prefix + "HadronFlavour", j.hadronFlavour)
@@ -1672,9 +1718,10 @@ class hhh6bProducerPNetAK4(Module):
                 fillBranch(prefix + "PdgId", j.pdgId)
                 fillBranch(prefix + "DRGenQuark", j.drGen)
                 fillBranch(prefix + "HiggsMatchedIndex", j.HiggsMatchIndex)
-                fillBranch(prefix + "FatJetMatched", j.FatJetMatch)
-                fillBranch(prefix + "FatJetMatchedIndex", j.FatJetMatchIndex)
                 fillBranch(prefix + "MatchedGenPt", j.MatchedGenPt)
+                fillBranch(prefix + "PNetSF", j.ftagSF)
+
+                
             if j:
                 hasMuon = True if (closest(j, event.cleaningMuons)[1] < 0.5) else False
                 hasElectron = True if (closest(j, event.cleaningElectrons)[1] < 0.5) else False
@@ -1695,7 +1742,7 @@ class hhh6bProducerPNetAK4(Module):
         event.reco4b2t_TauIsResolved = 0
 
         #if len(jets)+2*len(fatjets) > 5:
-        if False:
+        if True:
             # Technique 3: mass fitter
             
             #m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm(event,jets,fatjets,XbbWP)
@@ -1728,46 +1775,77 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("min_h_dRjets", min(h1.dRjets,h2.dRjets,h3.dRjets))
 
             self.out.fillBranch("h_fit_mass", m_fit)
-
+            self.out.fillBranch("hhh_mass", (h1+h2+h3).Mass)
+            self.out.fillBranch("hhh_pt", (h1+h2+h3).pt)
 
             # Technique 3: mass fitter for Taus
             
-            #m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm(event,jets,fatjets,XbbWP,dotaus=True,taus=taus,XtautauWP=XtautauWP)
-            event.reco4b2t_Idx,m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5,event.reco4b2t_TauIsBoosted,event.reco4b2t_TauIsResolved = higgsPairingAlgorithm_v2(event,jets,fatjets,XbbWP,self.isMC,self.Run,dotaus=True,taus=taus,XtautauWP=XtautauWP,METvars=[event.PuppiMET_pt, event.PuppiMET_phi, event.MET_covXX, event.MET_covXY, event.MET_covYY])
-                       
-            self.out.fillBranch("h1_4b2t_mass", h1.Mass)
-            self.out.fillBranch("h1_4b2t_pt", h1.pt)
-            self.out.fillBranch("h1_4b2t_eta", abs(h1.eta))
-            self.out.fillBranch("h1_4b2t_phi", h1.phi)
-            self.out.fillBranch("h1_4b2t_match", h1.matchH1)
-            self.out.fillBranch("h1_4b2t_dRjets", h1.dRjets)
+            #m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5 = self.higgsPairingAlgorithm_v2(event,jets,fatjets,XbbWP,dotaus=True,taus=taus,XtautauWP=XtautauWP)
+            if False:
+                event.reco4b2t_Idx,m_fit,h1,h2,h3,j0,j1,j2,j3,j4,j5,event.reco4b2t_TauIsBoosted,event.reco4b2t_TauIsResolved = higgsPairingAlgorithm_v2(event,jets,fatjets,XbbWP,self.isMC,self.Run,dotaus=True,taus=taus,XtautauWP=XtautauWP,METvars=[event.PuppiMET_pt, event.PuppiMET_phi, event.MET_covXX, event.MET_covXY, event.MET_covYY])
+                        
+                self.out.fillBranch("h1_4b2t_mass", h1.Mass)
+                self.out.fillBranch("h1_4b2t_pt", h1.pt)
+                self.out.fillBranch("h1_4b2t_eta", abs(h1.eta))
+                self.out.fillBranch("h1_4b2t_phi", h1.phi)
+                self.out.fillBranch("h1_4b2t_match", h1.matchH1)
+                self.out.fillBranch("h1_4b2t_dRjets", h1.dRjets)
 
-            self.out.fillBranch("h2_4b2t_mass", h2.Mass)
-            self.out.fillBranch("h2_4b2t_pt", h2.pt)
-            self.out.fillBranch("h2_4b2t_eta", abs(h2.eta))
-            self.out.fillBranch("h2_4b2t_phi", h2.phi)
-            self.out.fillBranch("h2_4b2t_match", h2.matchH2)
-            self.out.fillBranch("h2_4b2t_dRjets", h2.dRjets)
+                self.out.fillBranch("h2_4b2t_mass", h2.Mass)
+                self.out.fillBranch("h2_4b2t_pt", h2.pt)
+                self.out.fillBranch("h2_4b2t_eta", abs(h2.eta))
+                self.out.fillBranch("h2_4b2t_phi", h2.phi)
+                self.out.fillBranch("h2_4b2t_match", h2.matchH2)
+                self.out.fillBranch("h2_4b2t_dRjets", h2.dRjets)
 
-            self.out.fillBranch("h3_4b2t_mass", h3.Mass)
-            self.out.fillBranch("h3_4b2t_pt", h3.pt)
-            self.out.fillBranch("h3_4b2t_eta", abs(h3.eta))
-            self.out.fillBranch("h3_4b2t_phi", h3.phi)
-            self.out.fillBranch("h3_4b2t_match", h3.matchH3)
-            self.out.fillBranch("h3_4b2t_dRjets", h3.dRjets)
+                self.out.fillBranch("h3_4b2t_mass", h3.Mass)
+                self.out.fillBranch("h3_4b2t_pt", h3.pt)
+                self.out.fillBranch("h3_4b2t_eta", abs(h3.eta))
+                self.out.fillBranch("h3_4b2t_phi", h3.phi)
+                self.out.fillBranch("h3_4b2t_match", h3.matchH3)
+                self.out.fillBranch("h3_4b2t_dRjets", h3.dRjets)
 
-            self.out.fillBranch("max_h_eta_4b2t", max(abs(h1.eta), abs(h2.eta), abs(h3.eta)))
-            self.out.fillBranch("min_h_eta_4b2t", min(abs(h1.eta), abs(h2.eta), abs(h3.eta)))
-            self.out.fillBranch("max_h_dRjets_4b2t", max(h1.dRjets,h2.dRjets,h3.dRjets))
-            self.out.fillBranch("min_h_dRjets_4b2t", min(h1.dRjets,h2.dRjets,h3.dRjets))
+                self.out.fillBranch("max_h_eta_4b2t", max(abs(h1.eta), abs(h2.eta), abs(h3.eta)))
+                self.out.fillBranch("min_h_eta_4b2t", min(abs(h1.eta), abs(h2.eta), abs(h3.eta)))
+                self.out.fillBranch("max_h_dRjets_4b2t", max(h1.dRjets,h2.dRjets,h3.dRjets))
+                self.out.fillBranch("min_h_dRjets_4b2t", min(h1.dRjets,h2.dRjets,h3.dRjets))
 
-            self.out.fillBranch("h_fit_mass_4b2t", m_fit)
+                self.out.fillBranch("h_fit_mass_4b2t", m_fit)
 
-        self.out.fillBranch("h3_4b2t_phi", -1)
-        self.out.fillBranch("reco6b_Idx", event.reco6b_Idx)
-        self.out.fillBranch("reco4b2t_Idx", event.reco4b2t_Idx)
-        self.out.fillBranch("reco4b2t_TauIsBoosted", event.reco4b2t_TauIsBoosted)
-        self.out.fillBranch("reco4b2t_TauIsResolved", event.reco4b2t_TauIsResolved)
+                self.out.fillBranch("h3_4b2t_phi", -1)
+                self.out.fillBranch("reco6b_Idx", event.reco6b_Idx)
+                self.out.fillBranch("reco4b2t_Idx", event.reco4b2t_Idx)
+                self.out.fillBranch("reco4b2t_TauIsBoosted", event.reco4b2t_TauIsBoosted)
+                self.out.fillBranch("reco4b2t_TauIsResolved", event.reco4b2t_TauIsResolved)
+
+    def fillNbtag(self,event):
+        count_jet_loose = 0
+        count_jet_medium = 0
+        count_jet_tight = 0
+        count_fatjet_medium = 0
+        count_fatjet_tight = 0        
+        for j in event.ak4jets:
+            if j.tag in [54,53]: 
+                count_jet_tight += 1
+            if j.tag in [54,53,52,51]: 
+                count_jet_medium += 1
+            if j.tag in [54,53,52,51,50]: 
+                count_jet_loose += 1
+
+        for fj in event.fatjets:
+            if fj.tag == 2:
+                count_fatjet_tight +=1
+            if fj.tag in [2,1]:
+                count_fatjet_medium +=1
+                
+        
+        self.out.fillBranch("njetsPassLooseWP",count_jet_loose)
+        self.out.fillBranch("njetsPassMediumWP",count_jet_medium)
+        self.out.fillBranch("njetsPassTightWP",count_jet_tight)
+
+        self.out.fillBranch("nFatjetsPassMediumWP",count_fatjet_medium)
+        self.out.fillBranch("nFatjetsPassTightWP",count_fatjet_tight)
+
 
     def fillFTAGSF(self):
 
@@ -2059,7 +2137,7 @@ class hhh6bProducerPNetAK4(Module):
         allJets = Collection(event, "Jet")
         loose_jets = [j for j in allJets if j.pt > 20 and abs(j.eta) < 2.5]
         
-        if len(loose_jets) < 4 : return False
+        if len(loose_jets) < 4 : return False # Match trigger and stop loop here
 
         # fill histograms
         event.gweight = 1
@@ -2070,6 +2148,8 @@ class hhh6bProducerPNetAK4(Module):
 
         # select leptons and correct jets
         self.selectLeptons(event)
+
+        if len(event.looseLeptons) > 0: return False # Veto loose leptons (electrons and muons)
 
         # Iniatialise ftag weight for each event
         self.ftagwgts = self.ftagbasewgts.copy()
@@ -2222,8 +2302,7 @@ class hhh6bProducerPNetAK4(Module):
             self.fillJetInfo(event, event.ak4jets, probe_jets, XbbWP, event.looseTaus, XtautauWP)
         except IndexError:
             return False
-        if self.isMC:
-            self.fillFTAGSF()
+
         self.fillLeptonInfo(event, event.looseLeptons)
         self.fillTauInfo(event, event.looseTaus)
  
@@ -2231,6 +2310,9 @@ class hhh6bProducerPNetAK4(Module):
         if self._allJME and self.isMC:
             self.fillFatJetInfoJME(event, probe_jets)
 
+
+        if self.isMC:
+            self.fillFTAGSF()
         #self.fillTriggerFilters(event) 
 
         # SPANET inference
