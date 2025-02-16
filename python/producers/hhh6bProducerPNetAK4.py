@@ -1775,6 +1775,19 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("min_h_dRjets", min(h1.dRjets,h2.dRjets,h3.dRjets))
 
             self.out.fillBranch("h_fit_mass", m_fit)
+            
+            # Calculate the hhh systment
+            h1_vec = ROOT.TLorentzVector()
+            h2_vec = ROOT.TLorentzVector()
+            h3_vec = ROOT.TLorentzVector()
+
+            h1_vec.SetPtEtaPhiM(h1.pt,h1.eta,h1.phi,h1.Mass)
+            h2_vec.SetPtEtaPhiM(h2.pt,h2.eta,h2.phi,h2.Mass)
+            h3_vec.SetPtEtaPhiM(h3.pt,h3.eta,h3.phi,h3.Mass)
+
+            self.out.fillBranch("hhh_mass", (h1_vec+h2_vec+h3_vec).M())
+            self.out.fillBranch("hhh_pt", (h1_vec+h2_vec+h3_vec).Pt())
+
             self.out.fillBranch("hhh_mass", (h1+h2+h3).Mass)
             self.out.fillBranch("hhh_pt", (h1+h2+h3).pt)
 
