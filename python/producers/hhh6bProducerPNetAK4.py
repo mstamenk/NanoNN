@@ -1788,8 +1788,8 @@ class hhh6bProducerPNetAK4(Module):
             self.out.fillBranch("hhh_mass", (h1_vec+h2_vec+h3_vec).M())
             self.out.fillBranch("hhh_pt", (h1_vec+h2_vec+h3_vec).Pt())
 
-            self.out.fillBranch("hhh_mass", (h1+h2+h3).Mass)
-            self.out.fillBranch("hhh_pt", (h1+h2+h3).pt)
+            self.out.fillBranch("hhh_mass", (h1+h2+h3).M())
+            self.out.fillBranch("hhh_pt", (h1+h2+h3).Pt())
 
             # Technique 3: mass fitter for Taus
             
