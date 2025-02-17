@@ -2318,6 +2318,7 @@ class hhh6bProducerPNetAK4(Module):
 
         self.fillLeptonInfo(event, event.looseLeptons)
         self.fillTauInfo(event, event.looseTaus)
+        self.fillNbtag(event)
  
         # for all jme systs
         if self._allJME and self.isMC:
