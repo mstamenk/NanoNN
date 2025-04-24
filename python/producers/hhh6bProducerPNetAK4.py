@@ -119,7 +119,10 @@ class FlavTagSFProducer():
         self.corr = correctionlib.CorrectionSet.from_file(correction_file)['particleNetAK4_shape']
         self.ftag_tag_dict = ftag_tag_dict
     def get_sf(self, j, syst='central'):
-        return self.corr.evaluate(syst, j.hadronFlavour, self.ftag_tag_dict[j.tag], abs(j.eta), j.pt)
+        if j.tag > -1:
+            return self.corr.evaluate(syst, j.hadronFlavour, self.ftag_tag_dict[j.tag], abs(j.eta), j.pt)
+        else:
+            return 1
 
 
 class hhh6bProducerPNetAK4(Module):
@@ -1153,6 +1156,8 @@ class hhh6bProducerPNetAK4(Module):
                         self.fj_ftagwgts['fatJetFlavTagWeight'] *= fj.ftagSF
                         self.fj_ftagwgts['fatJetFlavTagWeight_UP'] *= self.fatjet_flavtag_sf_up[2]
                         self.fj_ftagwgts['fatJetFlavTagWeight_DOWN'] *= self.fatjet_flavtag_sf_down[2]
+                else:
+                    fj.tag = -1
 
 
         #event.ak4jets = [j for j in event._allJets if j.pt > 20 and abs(j.eta) < 2.5 and (j.jetId & 2)]
